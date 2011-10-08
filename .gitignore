@@ -1,0 +1,6 @@
+*.o
+*.dll
+*.lua
+*.exe
+!test.lua
+tags
