@@ -10,6 +10,22 @@ functions. it provides:
     * get a subbuffer from the origial buffer, and the changes to
       subbufer will affects origial buffer.
 
+and you can add lbuffer.h and recompile the other C module to get full
+lbuffer compatible with other lua module. just add:
+-DLB_OVERLOAD_LUA_API -include lbuffer.h
+
+when you compile other Lua C modules (using gcc). e.g. if you compile
+a lbuffer compatible md5[2] module, you can use them together like
+this:
+
+    require 'buffer'
+    require 'md5'
+    print(md5.sumhexa(buffer "hello world"))
+
+
+[1]: http://www.lua.org
+[2]: https://github.com/keplerproject/md5
+
 install
 =======
 
@@ -30,9 +46,9 @@ in *all* buffers.
 example
 =======
 
--- main usage see test.lua
-require 'buffer'
-local b = buffer "hello"
-b:append "world"
-b:sub(6,5):assign " "
-assert(b :eq "hello world")
+    -- main usage see test.lua
+    require 'buffer'
+    local b = buffer "hello"
+    b:append "world"
+    b:sub(6,5):assign " "
+    assert(b :eq "hello world")
