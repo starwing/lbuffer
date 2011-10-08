@@ -1,0 +1,38 @@
+ lbuffer - a mutable string support to lua
+===========================================
+
+lbuffer is a C module for lua, it provides mutable string feature to
+lua language[1]. it has all routines from lua's string module, except
+pattern match, reverse and byte-code dump. and add several modify
+functions. it provides:
+    * change the value of buffer without copy it.
+    * a pair of full feature pack/unpack functions.
+    * get a subbuffer from the origial buffer, and the changes to
+      subbufer will affects origial buffer.
+
+install
+=======
+
+compile it just like other lua module. in *nix, just:
+gcc -shared -obuffer.so *.c -llua51
+
+and in Windows using MinGW, just:
+gcc -mdll -DLUA_BUILD_AS_DLL -I/path/to/lua/include *.c /path/to/lua51.dll -o buffer.dll
+
+and in Windows using MSVC, just create a Win32/DLL Project, and add
+all .c and .h files to project, set output name to buffer.dll and
+compile it.
+
+if you want subbuffer feature, you need define a macro named
+LB_SUBBUFFER, because subbuffer will slow the memory realloc function
+in *all* buffers.
+
+example
+=======
+
+-- main usage see test.lua
+require 'buffer'
+local b = buffer "hello"
+b:append "world"
+b:sub(6,5):assign " "
+assert(b :eq "hello world")
