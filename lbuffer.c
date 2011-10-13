@@ -523,18 +523,20 @@ static void parse_fmtargs(parse_info *info, int *wide, int *count) {
     skip_white(info->fmt);
 }
 
-static void read_int32(parse_info *info, uint32_t *buf, int wide) {
+static uint32_t read_int32(parse_info *info, int wide) {
     const char *str = info->b->str;
     int pos = info->pos; info->pos += wide;
-    *buf = 0; switch (wide) {
+    int n = 0;
+    switch (wide) {
     default: luaL_error(info->L, "invalid wide: %d", wide); break;
-    case 4:             *buf |= uchar(str[pos++]) & 0xFF;
-    case 3: *buf <<= 8; *buf |= uchar(str[pos++]) & 0xFF;
-    case 2: *buf <<= 8; *buf |= uchar(str[pos++]) & 0xFF;
-    case 1: *buf <<= 8; *buf |= uchar(str[pos++]) & 0xFF;
+    case 4:           n |= uchar(str[pos++]) & 0xFF;
+    case 3:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
+    case 2:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
+    case 1:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
     }
     if (info->endian == LITTLE_ENDIAN)
-        *buf = swap32(*buf) >> ((4 - wide)<<3);
+        n = swap32(n) >> ((4 - wide)<<3);
+    return n;
 }
 
 static void write_int32(parse_info *info, uint32_t buf, int wide) {
@@ -552,11 +554,11 @@ static void write_int32(parse_info *info, uint32_t buf, int wide) {
 }
 
 static void read_binary(parse_info *info, numbuf_t *buf, int wide) {
-    if (wide <= 4) read_int32(info, &buf->i32, wide);
+    if (wide <= 4) buf->i32 = read_int32(info, wide);
     else {
         uint32_t lo, hi; /* in big endian */
-        read_int32(info, &hi, 4);
-        read_int32(info, &lo, wide - 4);
+        hi = read_int32(info, 4);
+        lo = read_int32(info, wide - 4);
         buf->i64 = info->endian == BIG_ENDIAN ?
             ((uint64_t)hi << ((wide-4)<<3)) | lo :
             ((uint64_t)lo << 32) | hi;
@@ -1052,4 +1054,5 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
 
 /* cc: flags+='-O4 -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
+ * cc: run='lua test.lua'
  */
