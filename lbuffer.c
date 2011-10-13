@@ -67,7 +67,6 @@ static size_t real_range(lua_State *L, int narg, size_t *plen) {
 /* buffer information */
 
 static int lb_isbuf(lua_State *L) {
-    lua_settop(L, 1);
 #ifdef LB_SUBBUFFER
     buffer *b;
     return lb_isbuffer(L, 1)
@@ -825,7 +824,12 @@ static int parse_fmt(parse_info *info) {
 }
 
 static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
-    parse_info info = {L, b, 0, pack, NATIVE_ENDIAN, narg, 0, NULL};
+    parse_info info = {NULL};
+    info.L = L;
+    info.b = b;
+    info.pack = pack;
+    info.narg = narg;
+    info.endian = NATIVE_ENDIAN;
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = real_offset(lua_tointeger(L, info.narg++), info.b->len);
     info.fmt = lb_checklstring(L, info.narg++, NULL);
