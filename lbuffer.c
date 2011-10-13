@@ -525,8 +525,7 @@ static void parse_fmtargs(parse_info *info, int *wide, int *count) {
 
 static uint32_t read_int32(parse_info *info, int wide) {
     const char *str = info->b->str;
-    int pos = info->pos; info->pos += wide;
-    int n = 0;
+    int n = 0, pos = info->pos; info->pos += wide;
     switch (wide) {
     default: luaL_error(info->L, "invalid wide: %d", wide); break;
     case 4:           n |= uchar(str[pos++]) & 0xFF;

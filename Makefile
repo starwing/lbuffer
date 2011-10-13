@@ -10,8 +10,7 @@ MACOSX_VERSION = 10.4
 
 PLAT = none
 DEFS = -DLB_SUBBUFFER
-MEXT = .so
-CMOD = buffer$(MEXT)
+CMOD = buffer.so
 OBJS = lbuffer.o lb_interface.o
 
 LIBS = -llua
@@ -27,11 +26,11 @@ MAC_ENV     = env MACOSX_DEPLOYMENT_TARGET='$(MACVER)'
 MAC_CFLAGS  = -O2 -fPIC -fno-common
 MAC_LDFLAGS = -bundle -undefined dynamic_lookup -fPIC $(LIBDIR)
 
-MINGW_INCDIR = -Id:/lua/include
-MINGW_LIBS = d:/lua/lua51.dll
-MINGW_MEXT = .dll
-MINGW_CFLAGS = -O2 -mdll -DLUA_BUILD_AS_DLL
-MINGW_LDFLAGS = -mdll
+MGW_INCDIR = -Id:/lua/include
+MGW_LIBS = d:/lua/lua51.dll
+MGW_CMOD = buffer.dll
+MGW_CFLAGS = -O2 -mdll -DLUA_BUILD_AS_DLL
+MGW_LDFLAGS = -mdll
 
 CC = gcc
 LD = $(MYENV) gcc
@@ -54,22 +53,22 @@ uninstall:
 	-rm $(LUACPATH)/$(CMOD)
 
 linux:
-	@$(MAKE) $(CMOD) PLAT=linux MYCFLAGS="$(LNX_CFLAGS)" MYLDFLAGS="$(LNX_LDFLAGS)" INCDIR="$(INCDIR)" LIBDIR="$(LIBDIR)" DEFS="$(DEFS)"
+	@$(MAKE) $(CMOD) PLAT=linux MYCFLAGS="$(LNX_CFLAGS)" MYLDFLAGS="$(LNX_LDFLAGS)"
 
 bsd:
-	@$(MAKE) $(CMOD) PLAT=bsd MYCFLAGS="$(BSD_CFLAGS)" MYLDFLAGS="$(BSD_LDFLAGS)" INCDIR="$(INCDIR)" LIBDIR="$(LIBDIR)" DEFS="$(DEFS)"
+	@$(MAKE) $(CMOD) PLAT=bsd MYCFLAGS="$(BSD_CFLAGS)" MYLDFLAGS="$(BSD_LDFLAGS)"
 
 macosx:
-	@$(MAKE) $(CMOD) PLAT=macosx MYCFLAGS="$(MAC_CFLAGS)" MYLDFLAGS="$(MAC_LDFLAGS)" MYENV="$(MAC_ENV)" INCDIR="$(INCDIR)" LIBDIR="$(LIBDIR)" DEFS="$(DEFS)"
+	@$(MAKE) $(CMOD) PLAT=macosx MYCFLAGS="$(MAC_CFLAGS)" MYLDFLAGS="$(MAC_LDFLAGS)" MYENV="$(MAC_ENV)"
 
 mingw:
-	@$(MAKE) $(MINGW_CMOD) PLAT=mingw MYCFLAGS="$(MINGW_CFLAGS)" MYLDFLAGS="$(MINGW_LDFLAGS)" INCDIR="$(MINGW_INCDIR)" LIBS="$(MINGW_LIBS)" MEXT="$(MINGW_MEXT)"
+	@$(MAKE) $(MGW_CMOD) PLAT=mingw MYCFLAGS="$(MGW_CFLAGS)" MYLDFLAGS="$(MGW_LDFLAGS)" INCDIR="$(MGW_INCDIR)" LIBS="$(MGW_LIBS)" CMOD="$(MGW_CMOD)"
 
-test: $(PLAT)
+test:
 	lua ./test.lua
 
 clean:
-	-rm -f $(OBJS) $(CMOD) $(MINGW_CMOD)
+	-rm -f $(OBJS) $(CMOD) $(MGW_CMOD)
 
 .c.o:
 	$(CC) $(CFLAGS) $< -c -o $@
