@@ -180,7 +180,11 @@ static int lb_upper(lua_State *L) {
 }
 
 static int lb_len(lua_State *L) {
-    if (!lua_isnoneornil(L, 2)) {
+    if (
+#if LUA_VERSION_NUM >= 502
+            !lb_isbuffer(L, 2) &&
+#endif
+            !lua_isnoneornil(L, 2)) {
         buffer *b = lb_checkbuffer(L, 1);
         size_t oldlen = b->len;
         int newlen = luaL_checkint(L, 2);
