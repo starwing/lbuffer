@@ -1,3 +1,8 @@
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+
 #define LUA_LIB
 #include "lbuffer.h"
 
@@ -200,7 +205,7 @@ static int lb_len(lua_State *L) {
         int newlen = luaL_checkint(L, 2);
         if (newlen < 0) newlen += b->len;
         if (newlen < 0) newlen = 0;
-        if (lb_realloc(L, b, newlen) && newlen > oldlen)
+        if (lb_realloc(L, b, newlen) && (size_t)newlen > oldlen)
             memset(&b->str[oldlen], 0, newlen - oldlen);
         lua_pushinteger(L, b->len);
     }
@@ -437,7 +442,7 @@ static int lb_move(lua_State *L) {
 
     if (grow_buffer(L, b, dst + len))
         memmove(&b->str[dst], &b->str[pos], len);
-    if (dst > oldlen)
+    if ((size_t)dst > oldlen)
         memset(&b->str[oldlen], 0, dst - oldlen);
     lua_settop(L, 1);
     return 1;
@@ -499,15 +504,15 @@ typedef struct parse_info {
 #define skip_white(s) do { while (*(s) == ' ' || *(s) == '\t'\
     || *(s) == '\r'|| *(s) == '\n') ++(s); } while(0)
 
-static int parse_optint(const char **str, int *pn) {
-    int retv = 0;
+static int parse_optint(const char **str, unsigned int *pn) {
+    unsigned int n = 0;
     const char *oldstr = *str;
-    while (isdigit(**str)) retv = retv * 10 + uchar(*(*str)++ - '0');
-    if (*str != oldstr) *pn = retv;
-    return retv;
+    while (isdigit(**str)) n = n * 10 + uchar(*(*str)++ - '0');
+    if (*str != oldstr) *pn = n;
+    return n;
 }
 
-static void parse_fmtargs(parse_info *info, int *wide, int *count) {
+static void parse_fmtargs(parse_info *info, size_t *wide, size_t *count) {
     skip_white(info->fmt);
     parse_optint(&info->fmt, wide);
     skip_white(info->fmt);
@@ -567,16 +572,16 @@ static void read_binary(parse_info *info, numbuf_t *buf, int wide) {
 static void write_binary(parse_info *info, numbuf_t *buf, int wide) {
     if (wide <= 4) write_int32(info, buf->i32, wide);
     else if (info->endian == BIG_ENDIAN) {
-        write_int32(info, buf->i64 >> 32, wide - 4);
-        write_int32(info, buf->i64, 4);
+        write_int32(info, (uint32_t)(buf->i64 >> 32), wide - 4);
+        write_int32(info, (uint32_t)buf->i64, 4);
     }
     else {
-        write_int32(info, buf->i64, 4);
-        write_int32(info, buf->i64 >> 32, wide - 4);
+        write_int32(info, (uint32_t)buf->i64, 4);
+        write_int32(info, (uint32_t)(buf->i64 >> 32), wide - 4);
     }
 }
 
-static int do_fmt(parse_info *info, char fmt, int wide, int count) {
+static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
     numbuf_t buf;
     size_t pos;
     int top = lua_gettop(info->L);
@@ -672,7 +677,7 @@ static int do_fmt(parse_info *info, char fmt, int wide, int count) {
             read_binary(info, &buf, wide);
             if (wide <= 4)
                 len = buf.i32;
-            else if ((len = buf.i64) != buf.i64)
+            else if ((len = (size_t)buf.i64) != buf.i64)
                 luaL_error(I(L), "string too big in format '%c'", fmt);
             if (I(pos) + len > blen) return 0;
             pushlstring(I(L), &I(b)->str[I(pos)], len);
@@ -699,7 +704,7 @@ static int do_fmt(parse_info *info, char fmt, int wide, int count) {
             if (wide > 4) {
                 if (wide != 8 && ((uint64_t)1 << (wide*8-1) & buf.i64) != 0)
                     buf.i64 |= ~(uint64_t)0 << (wide*8);
-                lua_pushnumber(I(L), (int64_t)buf.i64);
+                lua_pushnumber(I(L), (lua_Number)(int64_t)buf.i64);
             }
             else {
                 if (wide != 4 && ((uint32_t)1 << (wide*8-1) & buf.i32) != 0)
@@ -726,7 +731,7 @@ static int do_fmt(parse_info *info, char fmt, int wide, int count) {
             if (I(pos) + wide > blen) return 0;
             read_binary(info, &buf, wide);
             if (wide > 4)
-                lua_pushnumber(I(L), buf.i64);
+                lua_pushnumber(I(L), (lua_Number)buf.i64);
             else
                 lua_pushnumber(I(L), buf.i32);
             ADD_NRET();
@@ -740,7 +745,7 @@ static int do_fmt(parse_info *info, char fmt, int wide, int count) {
                     "only 4 or 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
             buf.d = luaL_checknumber(I(L), I(narg)++);
-            if (wide == 4) buf.f = buf.d;
+            if (wide == 4) buf.f = (float)buf.d;
             if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
                 write_binary(info, &buf, wide);
                 I(pos) += wide;
@@ -807,7 +812,7 @@ static int parse_fmt(parse_info *info) {
         ++info->fmt; skip_white(info->fmt);
     }
     while ((fmt = *info->fmt++) != '\0') {
-        int wide = 0, count = 1;
+        size_t wide = 0, count = 1;
         parse_fmtargs(info, &wide, &count);
         if (!do_fmt(info, fmt, wide, count)) {
             if ((fmt = *info->fmt++) == '#') {
@@ -952,7 +957,7 @@ static int lb_call(lua_State *L) {
 static int auxipairs(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     int key = luaL_checkint(L, 2) + 1;
-    if (key <= 0 || key > b->len) return 0;
+    if (key <= 0 || (size_t)key > b->len) return 0;
     lua_pushinteger(L, key);
     lua_pushinteger(L, uchar(b->str[key - 1]));
     return 2;
