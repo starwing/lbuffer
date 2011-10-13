@@ -27,7 +27,6 @@ function test()
         print('using', jit.version)
     end
     test_new()
-    test_cmp()
     test_map()
     test_rep()
     test_alloc()
@@ -80,18 +79,6 @@ function test_new()
     ok(b :eq "nnnnnnnnnn", "using number and buffer range 2, -2 ("..b..")")
     local b = buffer(10, buffer "one":topointer(2), 2)
     ok(b :eq "nenenenene", "using number and userdata ("..b..")")
-end
-
-function test_cmp()
-    test_msg "test compare operations"
-    local res = (buffer "a") :cmp (buffer "bb")
-    ok(res == -1, "a is litter than bb ("..res..")")
-    local res = (buffer "aa") :cmp (buffer "b")
-    ok(res == -1, "aa is litter than b ("..res..")")
-    local res = (buffer "ba") :cmp (buffer "bb")
-    ok(res == -1, "ba is litter than bb ("..res..")")
-    local res = (buffer "abca") :cmp (buffer "abc")
-    ok(res == 1, "abca is greater than abc ("..res..")")
 end
 
 function test_map()
