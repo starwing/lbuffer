@@ -149,18 +149,29 @@ static int lb_cmp(lua_State *L) {
     size_t l1, l2;
     const char *s1 = lb_checklstring(L, 1, &l1);
     const char *s2 = lb_checklstring(L, 2, &l2);
-    int res;
-    if (l1 != l2)
-        res = l1 > l2 ? 1 : -1;
-    else
-        res = memcmp(s1, s2, l1);
+    int res = memcmp(s1, s2, (l1 > l2 ? l2 : l1));
+    if ( 0 == res ) {
+        if ( l1 > l2 ) res = 1;
+        else if ( l1 < l2 ) res = -1;
+    }
     lua_pushinteger(L, res);
     return 1;
 }
 
 static int lb_eq(lua_State *L) {
-    lb_cmp(L);
-    lua_pushboolean(L, lua_tointeger(L, -1) == 0);
+    /* We can do this slightly faster than lb_cmp() by comparing
+     * string length first.
+     */
+    size_t l1, l2;
+    const char *s1 = lb_checklstring(L, 1, &l1);
+    const char *s2 = lb_checklstring(L, 2, &l2);
+    int res;
+    if ( l1 != l2 ) {
+        res = 0;
+    } else {
+        res = !memcmp(s1, s2, l1);
+    }
+    lua_pushboolean(L, res);
     return 1;
 }
 
@@ -262,7 +273,7 @@ enum cmd {
     cmd_append,
     cmd_assign,
     cmd_insert,
-    cmd_set,
+    cmd_set
 };
 
 static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c, int pos, int len) {
@@ -283,7 +294,7 @@ static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
         int len = luaL_checkint(L, narg+1);
         if (plen != NULL) *plen = len >= 0 ? len : 0;
 #ifdef LB_COMPAT_TOLUA
-        if (!lua_islightuserdata(L, narg)) // compatble with tolua
+        if (!lua_islightuserdata(L, narg)) /* compatble with tolua */
             u = *(void**)u;
 #endif
     }

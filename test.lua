@@ -39,6 +39,7 @@ function test()
     test_move()
     test_remove()
     test_pack()
+    test_cmp()
     test_mt()
     if not failed then
         test_msg "** ALL TEST PASSED!!"
@@ -257,6 +258,14 @@ function test_remove()
     ok(b :eq "applepie", "remove range of buffer ("..b..')')
     b:remove()
     ok(b :eq "", "remove all of buffer ("..b..')')
+end
+
+function test_cmp()
+    test_msg "test cmp operation"
+    ok(buffer("bb"):cmp(buffer("a")) == 1, "bb:cmp(a) -> 1")
+    ok(buffer("b"):cmp(buffer("a")) == 1, "b:cmp(a) -> 1")
+    ok(buffer("a"):cmp(buffer("bb")) == -1,  "a:cmp(bb) -> -1")
+    ok(buffer("a"):cmp(buffer("b")) == -1,  "a:cmp(b) -> -1")
 end
 
 function test_pack()
