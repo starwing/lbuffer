@@ -1,4 +1,4 @@
-require 'buffer'
+local buffer = require 'buffer'
 
 -- borrowed from brimworks's lua-zlib
 local counter = 1
