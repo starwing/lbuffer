@@ -150,11 +150,9 @@ static int lb_cmp(lua_State *L) {
     const char *s1 = lb_checklstring(L, 1, &l1);
     const char *s2 = lb_checklstring(L, 2, &l2);
     int res;
-    if (l1 != l2)
-        res = l1 > l2 ? 1 : -1;
-    else
-        res = memcmp(s1, s2, l1);
-    lua_pushinteger(L, res);
+    if ((res = memcmp(s1, s2, l1 < l2 ? l1 : l2)) == 0)
+        res = l1 - l2;
+    lua_pushinteger(L, res > 0 ? 1 : res < 0 ? -1 : 0);
     return 1;
 }
 
