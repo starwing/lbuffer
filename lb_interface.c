@@ -160,20 +160,16 @@ char *lb_realloc(lua_State *L, buffer *b, size_t len) {
         void *ud;
         lua_Alloc f;
 
-#define REAL_LEN(len) ((len) == 0 ? 0 : (len) + 1)
         f = lua_getallocf(L, &ud);
-        newstr = (char*)f(ud, b->str, REAL_LEN(b->len), REAL_LEN(len));
+        newstr = (char*)f(ud, b->str, b->len, len);
         if (len == 0 || newstr != NULL) {
 #ifdef LB_SUBBUFFER
             redir_subbuffers(b, newstr, len);
 #endif
-            if (newstr != NULL)
-                newstr[len] = '\0';
             b->str = newstr;
             b->len = len;
         }
         return newstr;
-#undef REAL_LEN
     }
     return b->str;
 }
@@ -283,6 +279,8 @@ const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
     }
 }
 
-/* cc: flags+='-O4 -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+/*
+ * cc: flags+='-O4 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
+ * cc: run='lua test.lua'
  */

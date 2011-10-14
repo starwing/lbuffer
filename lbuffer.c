@@ -949,8 +949,18 @@ static int lb_newindex(lua_State *L) {
 }
 
 static int lb_call(lua_State *L) {
+    size_t len;
+    const char *str;
     buffer *b = lb_newbuffer(L);
     lua_replace(L, 1);
+    if (lua_gettop(L) == 2 && (str = lua_tolstring(L, 2, &len)) != NULL) {
+        if (lb_realloc(L, b, len + 1)) {
+            memcpy(b->str, str, len);
+            b->str[len] = '\0';
+        }
+        lua_settop(L, 1);
+        return 1;
+    }
     return do_cmd(L, b, 2, cmd_init);
 }
 
@@ -1059,7 +1069,8 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
     return 1;
 }
 
-/* cc: flags+='-O4 -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+/*
+ * cc: flags+='-O4 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */
