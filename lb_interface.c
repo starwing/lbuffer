@@ -160,16 +160,20 @@ char *lb_realloc(lua_State *L, buffer *b, size_t len) {
         void *ud;
         lua_Alloc f;
 
+#define REAL_LEN(len) ((len) == 0 ? 0 : (len) + 1)
         f = lua_getallocf(L, &ud);
-        newstr = (char*)f(ud, b->str, b->len, len);
-        if (len == 0 || newstr) {
+        newstr = (char*)f(ud, b->str, REAL_LEN(b->len), REAL_LEN(len));
+        if (len == 0 || newstr != NULL) {
 #ifdef LB_SUBBUFFER
             redir_subbuffers(b, newstr, len);
 #endif
+            if (newstr != NULL)
+                newstr[len] = '\0';
             b->str = newstr;
             b->len = len;
         }
         return newstr;
+#undef REAL_LEN
     }
     return b->str;
 }
