@@ -19,16 +19,13 @@ static int luaL_typerror (lua_State *L, int narg, const char *tname) {
 }
 #endif
 
-#ifdef LB_OVERLOAD_LUA_API
+#ifdef LB_REPLACE_LUA_API
 #  undef lua_isstring
 #  undef lua_tolstring
 #  undef luaL_checklstring
 #  undef luaL_optlstring
 #endif
 
-#if LUA_VERSION_NUM < 502
-#define BUFFER_LIBNAME "buffer"
-#endif
 #define uchar(ch) ((unsigned char)(ch))
 
 
@@ -370,7 +367,7 @@ static int lb_sub(lua_State *L) {
 }
 
 static int lb_subcount(lua_State *L) {
-    buffer *b = (buffer*)luaL_checkudata(L, 1, BUFFER_MTNAME);
+    buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
     if (b->subcount >= 0)
         lua_pushinteger(L, b->subcount);
     else if (b->subcount == LB_INVALID_SUB)
@@ -898,7 +895,7 @@ static int check_offset(int offset, int len, int extra) {
 
 static int lb_index(lua_State *L) {
 #ifdef LB_SUBBUFFER
-    buffer *b = (buffer*)luaL_checkudata(L, 1, BUFFER_MTNAME);
+    buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
 #else
     buffer *b = lb_checkbuffer(L, 1);
 #endif
@@ -1036,7 +1033,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
 #if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs); /* 1 */
 #else
-    luaL_register(L, libname != NULL ? libname :BUFFER_LIBNAME, funcs); /* 1 */
+    luaL_register(L, libname != NULL ? libname : LB_LIBNAME, funcs); /* 1 */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
     lua_pushliteral(L, "__call"); /* 3 */
@@ -1044,7 +1041,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
     lua_rawset(L, -3); /* 3,4->2 */
     lua_setmetatable(L, -2); /* 2->1 */
 
-    lua_pushliteral(L, BUFFER_VERSION); /* 2 */
+    lua_pushliteral(L, LB_VERSION); /* 2 */
     lua_setfield(L, -2, "_VERSION"); /* 2->1 */
 #ifdef LB_SUBBUFFER
     lua_pushinteger(L, LB_SUBS_MAX); /* 2 */
@@ -1052,7 +1049,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
 #endif
 
     /* create metatable */
-    if (luaL_newmetatable(L, BUFFER_MTNAME)) { /* 2 */
+    if (luaL_newmetatable(L, LB_LIBNAME)) { /* 2 */
 #if LUA_VERSION_NUM >= 502
         lua_pushvalue(L, -2); /* (1)->3 */
         luaL_setfuncs(L, mt, 1);

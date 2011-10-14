@@ -1,3 +1,4 @@
+#define LUA_LIB
 #include "lbuffer.h"
 
 
@@ -12,7 +13,7 @@ static int luaL_typerror (lua_State *L, int narg, const char *tname) {
 }
 #endif
 
-#ifdef LB_OVERLOAD_LUA_API
+#ifdef LB_REPLACE_LUA_API
 #  undef lua_isstring
 #  undef lua_tolstring
 #  undef luaL_checklstring
@@ -24,7 +25,7 @@ static int luaL_typerror (lua_State *L, int narg, const char *tname) {
 
 #ifdef LB_SUBBUFFER
 buffer *lb_checkbuffer(lua_State *L, int narg) {
-    buffer *b = (buffer*)luaL_checkudata(L, narg, BUFFER_MTNAME);
+    buffer *b = (buffer*)luaL_checkudata(L, narg, LB_LIBNAME);
     if (b != NULL && lb_isinvalidsub(b))
         luaL_error(L, "invalid subbuffer (%p)", b);
     return b;
@@ -40,7 +41,7 @@ subbuffer *lb_initsubbuffer(subbuffer *b) {
 
 buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
     subbuffer *sb = (subbuffer*)lua_newuserdata(L, sizeof(subbuffer)); /* 1 */
-    luaL_getmetatable(L, BUFFER_MTNAME); /* 2 */
+    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
     lua_setmetatable(L, -2); /* 2->1 */
     begin = begin > b->len ? b->len : begin;
     end = end > b->len ? b->len : end;
@@ -176,7 +177,7 @@ char *lb_realloc(lua_State *L, buffer *b, size_t len) {
 
 int lb_isbuffer(lua_State *L, int narg) {
     if (lua_getmetatable(L, narg)) {
-        lua_getfield(L, LUA_REGISTRYINDEX, BUFFER_MTNAME);
+        lua_getfield(L, LUA_REGISTRYINDEX, LB_LIBNAME);
         if (!lua_isnil(L, -1) && lua_rawequal(L, -1, -2)) {
             lua_pop(L, 2);
             return 1;
@@ -214,7 +215,7 @@ buffer *lb_initbuffer(buffer *b) {
 
 buffer *lb_newbuffer(lua_State *L) {
     buffer *b = lb_initbuffer((buffer*)lua_newuserdata(L, sizeof(buffer))); /* 1 */
-    luaL_getmetatable(L, BUFFER_MTNAME); /* 2 */
+    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
     lua_setmetatable(L, -2); /* 2->1 */
     return b;
 }

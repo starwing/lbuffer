@@ -6,9 +6,9 @@
 #include <lauxlib.h>
 
 
-#define BUFFER_VERSION "0.1"
-#define BUFFER_MTNAME "buffer"
-#define BUFFER_HEADER size_t len; char *str
+#define LB_LIBNAME "buffer"
+#define LB_VERSION "0.1"
+#define LB_STRUCT_HEADER size_t len; char *str
 
 
 #ifdef LB_SUBBUFFER
@@ -17,27 +17,27 @@
 #define LB_INVALID_SUB          -2
 
 typedef struct subbuffer {
-    BUFFER_HEADER;
+    LB_STRUCT_HEADER;
     int subtype;
     struct buffer *parent;
 } subbuffer;
-#endif
+#endif /* LB_SUBBUFFER */
 
 typedef struct buffer {
-    BUFFER_HEADER;
+    LB_STRUCT_HEADER;
 #ifdef LB_SUBBUFFER
     int subcount;
     struct subbuffer *subs[LB_SUBS_MAX];
-#endif
+#endif /* LB_SUBBUFFER */
 } buffer;
 
 
-#define lb_checkbuffer(L, narg) ((buffer*)luaL_checkudata(L, narg, BUFFER_MTNAME))
+#define lb_checkbuffer(L, narg) ((buffer*)luaL_checkudata(L, narg, LB_LIBNAME))
 #define lb_deletebuffer(L, b)   lb_realloc((L), (b), 0)
 #ifdef LB_SUBBUFFER
 #  define lb_issubbuffer(b)     (((subbuffer*)(b))->subtype == LB_SUB)
 #  define lb_isinvalidsub(b)    (((subbuffer*)(b))->subtype == LB_INVALID_SUB)
-#endif
+#endif /* LB_SUBBUFFER */
 
 buffer     *lb_initbuffer   (buffer *b);
 buffer     *lb_newbuffer    (lua_State *L);
@@ -61,13 +61,13 @@ buffer     *lb_checkbuffer  (lua_State *L, int narg);
 buffer     *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end);
 subbuffer  *lb_initsubbuffer(subbuffer *b);
 void        lb_removesubbuffer (subbuffer *b);
-#endif
+#endif /* LB_SUBBUFFER */
 
-#ifdef LB_OVERLOAD_LUA_API
+#ifdef LB_REPLACE_LUA_API
 #  define lua_isstring      lb_isbufferorstring
 #  define lua_tolstring     lb_tolstring
 #  define luaL_checklstring lb_checklstring
 #  define luaL_optlstring   lb_optlstring
-#endif
+#endif /* LB_REPLACE_LUA_API */
 
 #endif /* LBUFFER_H */

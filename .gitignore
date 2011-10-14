@@ -1,6 +1,10 @@
 *.o
+*.so
+*.obj
 *.dll
-*.lua
+*.lib
+*.exp
 *.exe
+*.lua
 !test.lua
 tags
