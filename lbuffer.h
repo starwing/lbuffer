@@ -53,6 +53,8 @@ const char *lb_tolstring    (lua_State *L, int narg, size_t *plen);
 const char *lb_checklstring (lua_State *L, int narg, size_t *plen);
 const char *lb_optlstring   (lua_State *L, int narg, const char *def, size_t *plen);
 
+LUALIB_API int luaopen_buffer(lua_State *L);
+
 #ifdef LB_SUBBUFFER
 #undef      lb_checkbuffer
 buffer     *lb_checkbuffer  (lua_State *L, int narg);
