@@ -1006,6 +1006,7 @@ static luaL_Reg funcs[] = {
     { "remove",    lb_remove    },
     { "pack",      lb_pack      },
     { "unpack",    lb_unpack    },
+    { NULL,        NULL         },
 };
 
 static luaL_Reg mt[] = {
@@ -1017,13 +1018,15 @@ static luaL_Reg mt[] = {
     { "__gc",      lb_gc        },
     { "__ipairs",  lb_ipairs    },
     { "__pairs",   lb_ipairs    },
+    { NULL,        NULL         },
 };
 
 LUALIB_API int luaopen_buffer(lua_State *L) {
+    const char *libname = lua_gettop(L) >= 1 ? lua_tostring(L, 1) : NULL;
 #if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs); /* 1 */
 #else
-    luaL_register(L, BUFFER_LIBNAME, funcs); /* 1 */
+    luaL_register(L, libname != NULL ? libname :BUFFER_LIBNAME, funcs); /* 1 */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
     lua_pushliteral(L, "__call"); /* 3 */
