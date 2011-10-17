@@ -506,6 +506,8 @@ typedef struct parse_info {
     const char *fmt;
 } parse_info;
 
+#define I(f) (info->f)
+
 #define PIF_PACK         0x01
 #define PIF_BIGENDIAN    0x02
 #define PIF_STRINGKEY    0x04
@@ -575,68 +577,68 @@ static void expand_sign(numcast_t *buf, int wide) {
 }
 
 static int source(parse_info *info) {
-    if (info->level == 0)
-        lua_pushvalue(info->L, info->narg++);
+    if (I(level) == 0)
+        lua_pushvalue(I(L), I(narg)++);
     else {
         if (!pif_test(info, PIF_STRINGKEY))
-            lua_pushinteger(info->L, info->index++);
-        lua_gettable(info->L, -2);
+            lua_pushinteger(I(L), I(index)++);
+        lua_gettable(I(L), -2);
     }
     return -1;
 }
 
 static const char *source_lstring(parse_info *info, size_t *plen) {
     int narg = source(info);
-    if (lb_isbufferorstring(info->L, narg))
-        return lb_tolstring(info->L, narg, plen);
+    if (lb_isbufferorstring(I(L), narg))
+        return lb_tolstring(I(L), narg, plen);
     else {
-        const char *msg = lua_pushfstring(info->L,
+        const char *msg = lua_pushfstring(I(L),
                 "buffer or string expected in table [%d], got %s",
-                info->index - 1, luaL_typename(info->L, narg));
-        luaL_argerror(info->L, info->narg-2, msg);
+                I(index) - 1, luaL_typename(I(L), narg));
+        luaL_argerror(I(L), I(narg)-2, msg);
     }
     return NULL;
 }
 
 static lua_Number source_number(parse_info *info) {
     int narg = source(info);
-    if (lua_isnumber(info->L, narg))
-        return lua_tonumber(info->L, narg);
+    if (lua_isnumber(I(L), narg))
+        return lua_tonumber(I(L), narg);
     else {
-        const char *msg = lua_pushfstring(info->L,
+        const char *msg = lua_pushfstring(I(L),
                 "number expected in table [%d], got %s",
-                info->index - 1, luaL_typename(info->L, narg));
-        luaL_argerror(info->L, info->narg-2, msg);
+                I(index) - 1, luaL_typename(I(L), narg));
+        luaL_argerror(I(L), I(narg)-2, msg);
     }
     return 0;
 }
 
 static void sink(parse_info *info) {
-    if (info->level == 0)
-        ++info->nret;
+    if (I(level) == 0)
+        ++I(nret);
     else {
         if (!pif_test(info, PIF_STRINGKEY)) {
-            lua_pushinteger(info->L, info->index++);
-            lua_insert(info->L, -2);
+            lua_pushinteger(I(L), I(index)++);
+            lua_insert(I(L), -2);
         }
-        lua_settable(info->L, -3);
+        lua_settable(I(L), -3);
     }
 }
+
+#define pack_checkstack(n) \
+        luaL_checkstack(I(L), (n), "too much top level formats")
 
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     numcast_t buf;
     size_t pos;
-    int top = lua_gettop(info->L);
+    int top = lua_gettop(I(L));
     typedef void (*pushlstring_t)(lua_State *L, const char *str, size_t len);
     pushlstring_t pushlstring = isupper(fmt) ?
         (pushlstring_t)lb_pushlstring :
         (pushlstring_t)lua_pushlstring;
 
-#define I(f) (info->f)
-#define CHECK_STACK(n) \
-        luaL_checkstack(I(L), (n), "too much top level formats")
 #define SINK() do { sink(info); \
-        if (I(level) == 0 && count < 0) CHECK_STACK(1); } while (0)
+        if (I(level) == 0 && count < 0) pack_checkstack(1); } while (0)
 #define BEGIN_PACK(n) \
     if (pif_test(info, PIF_PACK)) { \
         if (count < 0 || n <= 0 || lb_realloc(I(L), I(b), (n))) { \
@@ -645,7 +647,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         } \
     } else { \
         size_t blen = I(b)->len; \
-        if (count > 0) CHECK_STACK(count); \
+        if (count > 0) pack_checkstack(count); \
         while (count-- && I(pos) < blen)
 #define END_PACK() \
     } break
@@ -811,6 +813,19 @@ check_seek:
         I(pos) = pos;
         break;
 
+    default:
+        luaL_error(I(L), "invalid format '%c'", fmt);
+        break;
+    }
+    return 1;
+#undef SINK
+#undef END_PACK
+#undef BEGIN_UNPACK
+#undef BEGIN_PACK
+}
+
+static int do_delimiter(parse_info *info, char fmt) {
+    switch (fmt) {
     case '{':
         /* when meet a open-block, 3 value will be pushed onto stack:
          * the current index, the string key (or nil), and a new table
@@ -854,7 +869,7 @@ check_seek:
             else
                 pif_set(info, PIF_STRINGKEY, 1);
             sink(info);
-            CHECK_STACK(1);
+            pack_checkstack(1);
         }
         break;
 
@@ -862,7 +877,8 @@ check_seek:
         if (I(level) != 0)
             luaL_error(I(L), "can only retrieve position out of block");
         lua_pushinteger(I(L), I(pos) + 1);
-        SINK();
+        sink(info);
+        pack_checkstack(1);
         break;
 
     case '<': /* little bigendian */
@@ -873,16 +889,9 @@ check_seek:
         pif_set(info, PIF_BIGENDIAN, CPU_BIG_ENDIAN); break;
 
     default:
-        luaL_error(I(L), "invalid format '%c'", fmt);
-        break;
+        return 0;
     }
     return 1;
-#undef END_PACK
-#undef BEGIN_UNPACK
-#undef BEGIN_PACK
-#undef SINK
-#undef CHECK_STACK
-#undef I
 }
 
 #define skip_white(s) do { while (*(s) == ' ' || *(s) == '\t' \
@@ -897,40 +906,41 @@ static int parse_optint(const char **str, unsigned int *pn) {
 }
 
 static void parse_fmtargs(parse_info *info, size_t *wide, int *count) {
-    skip_white(info->fmt);
-    parse_optint(&info->fmt, wide);
-    skip_white(info->fmt);
-    if (*info->fmt == '*') {
+    skip_white(I(fmt));
+    parse_optint(&I(fmt), wide);
+    skip_white(I(fmt));
+    if (*I(fmt) == '*') {
         size_t ucount = *count;
-        ++info->fmt;
-        skip_white(info->fmt);
-        parse_optint(&info->fmt, &ucount);
+        ++I(fmt);
+        skip_white(I(fmt));
+        parse_optint(&I(fmt), &ucount);
         *count = ucount;
     }
-    else if (*info->fmt == '$') {
-        ++info->fmt;
+    else if (*I(fmt) == '$') {
+        ++I(fmt);
         *count = -1;
     }
-    skip_white(info->fmt);
+    skip_white(I(fmt));
 }
 
 static void parse_stringkey(parse_info *info) {
-    if (isalpha(*info->fmt) || *info->fmt == '_') {
-        const char *curpos = info->fmt, *end;
-        while (isalnum(*info->fmt) || *info->fmt == '_')
-            ++info->fmt;
-        end = info->fmt;
-        skip_white(info->fmt);
-        if (*info->fmt != '=')
-            info->fmt = curpos;
+    skip_white(I(fmt));
+    if (isalpha(*I(fmt)) || *I(fmt) == '_') {
+        const char *curpos = I(fmt), *end;
+        while (isalnum(*I(fmt)) || *I(fmt) == '_')
+            ++I(fmt);
+        end = I(fmt);
+        skip_white(I(fmt));
+        if (*I(fmt) != '=')
+            I(fmt) = curpos;
         else {
-            ++info->fmt;
-            skip_white(info->fmt);
-            if (*info->fmt == '}' || *info->fmt == '\0')
-                luaL_error(info->L, "key without format near \"%s\"", curpos);
-            if (info->level == 0)
-                luaL_error(info->L, "key at top level near \"%s\"", curpos);
-            lua_pushlstring(info->L, curpos, end - curpos);
+            ++I(fmt);
+            skip_white(I(fmt));
+            if (*I(fmt) == '}' || *I(fmt) == '\0')
+                luaL_error(I(L), "key without format near \"%s\"", curpos);
+            if (I(level) == 0)
+                luaL_error(I(L), "key at top level near \"%s\"", curpos);
+            lua_pushlstring(I(L), curpos, end - curpos);
             pif_set(info, PIF_STRINGKEY, 1);
             return;
         }
@@ -940,45 +950,39 @@ static void parse_stringkey(parse_info *info) {
 
 static int parse_fmt(parse_info *info) {
     int fmt, insert_pos = 0;
-    skip_white(info->fmt);
-    if (*info->fmt == '!') {
+    skip_white(I(fmt));
+    if (*I(fmt) == '!') {
         insert_pos = 1; /* only enabled in unpack */
-        ++info->fmt; skip_white(info->fmt);
+        ++I(fmt);
     }
-    while (parse_stringkey(info), (fmt = *info->fmt++) != '\0') {
-        size_t wide = 0;
-        int count = 1;
-        switch (fmt) {
-        case '{': case '}': case '#':
-        case '<': case '>': case '=':
-            skip_white(info->fmt); break;
-        default:
-            parse_fmtargs(info, &wide, &count); break;
-        }
-        if (!do_packfmt(info, fmt, wide, count)) {
-            lua_pop(info->L, info->level * 3); /* 3 values per level */
-            info->level = 0;
-            lua_pushnil(info->L); ++info->nret;
-            skip_white(info->fmt);
-            /* skip any block */
-            while (*info->fmt == '{' || *info->fmt == '}') {
-                ++info->fmt;
-                skip_white(info->fmt);
+    while (parse_stringkey(info), (fmt = *I(fmt)++) != '\0') {
+        if (!do_delimiter(info, fmt)) {
+            size_t wide = 0;
+            int count = 1;
+            parse_fmtargs(info, &wide, &count);
+            if (!do_packfmt(info, fmt, wide, count)) {
+                lua_pop(I(L), I(level) * 3); /* 3 values per level */
+                I(level) = 0;
+                lua_pushnil(I(L)); ++I(nret);
+                skip_white(I(fmt));
+                /* skip any block */
+                while (*I(fmt) == '{' || *I(fmt) == '}') {
+                    ++I(fmt);
+                    skip_white(I(fmt));
+                }
+                if ((fmt = *I(fmt)++) == '#')
+                    do_delimiter(info, fmt);
+                break;
             }
-            if ((fmt = *info->fmt++) == '#') {
-                parse_fmtargs(info, &wide, &count);
-                do_packfmt(info, fmt, 0, 0);
-            }
-            break;
         }
     }
-    if (info->level != 0)
-        luaL_error(info->L, "unbalanced '{' in format");
+    if (I(level) != 0)
+        luaL_error(I(L), "unbalanced '{' in format");
     if (insert_pos) {
-        lua_pushinteger(info->L, info->pos + 1);
-        lua_insert(info->L, -(++info->nret));
+        lua_pushinteger(I(L), I(pos) + 1);
+        lua_insert(I(L), -(++I(nret)));
     }
-    return info->nret;
+    return I(nret);
 }
 
 static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
@@ -1069,6 +1073,8 @@ static int lbE_setuint(lua_State *L) {
     lua_settop(L, 1);
     return 1;
 }
+
+#undef I
 
 /* meta methods */
 
