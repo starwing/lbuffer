@@ -500,11 +500,18 @@ typedef struct parse_info {
     lua_State *L;
     buffer *b;
     size_t pos;
-    int pack, bigendian;
+    unsigned int flags;
     int narg, nret;
     int level, index;
     const char *fmt;
 } parse_info;
+
+#define PIF_PACK         0x01
+#define PIF_BIGENDIAN    0x02
+#define PIF_STRINGKEY    0x04
+
+#define pif_test(i, f)      ((i)->flags & (f))
+#define pif_set(i, f, b)    ((b) ? ((i)->flags |= (f)) : ((i)->flags &= ~(f)))
 
 static uint32_t read_int32(const char *str, int bigendian, int wide) {
     int n = 0;
@@ -532,8 +539,7 @@ static void write_int32(char *str, int bigendian, uint32_t n, int wide) {
     }
 }
 
-static void read_binary(const char *str, int bigendian,
-                        numcast_t *buf, int wide) {
+static void read_binary(const char *str, int bigendian, numcast_t *buf, int wide) {
     if (wide <= 4) buf->i32 = read_int32(str, bigendian, wide);
     else {
         uint32_t lo, hi; /* in big bigendian */
@@ -545,8 +551,7 @@ static void read_binary(const char *str, int bigendian,
     }
 }
 
-static void write_binary(char *str, int bigendian,
-                         numcast_t *buf, int wide) {
+static void write_binary(char *str, int bigendian, numcast_t *buf, int wide) {
     if (wide <= 4) write_int32(str, bigendian, buf->i32, wide);
     else if (bigendian) {
         write_int32(str, bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
@@ -573,7 +578,8 @@ static int source(parse_info *info) {
     if (info->level == 0)
         lua_pushvalue(info->L, info->narg++);
     else {
-        lua_pushinteger(info->L, info->index++);
+        if (!pif_test(info, PIF_STRINGKEY))
+            lua_pushinteger(info->L, info->index++);
         lua_gettable(info->L, -2);
     }
     return -1;
@@ -609,8 +615,10 @@ static void sink(parse_info *info) {
     if (info->level == 0)
         ++info->nret;
     else {
-        lua_pushinteger(info->L, info->index++);
-        lua_insert(info->L, -2);
+        if (!pif_test(info, PIF_STRINGKEY)) {
+            lua_pushinteger(info->L, info->index++);
+            lua_insert(info->L, -2);
+        }
         lua_settable(info->L, -3);
     }
 }
@@ -630,7 +638,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
 #define SINK() do { sink(info); \
         if (I(level) == 0 && count < 0) CHECK_STACK(1); } while (0)
 #define BEGIN_PACK(n) \
-    if (I(pack)) { \
+    if (pif_test(info, PIF_PACK)) { \
         if (count < 0 || n <= 0 || lb_realloc(I(L), I(b), (n))) { \
             while ((count >= 0 || I(narg) <= top) && count--)
 #define BEGIN_UNPACK() \
@@ -708,7 +716,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             if (lb_realloc(I(L), I(b), I(pos) + wide + len)) {
                 if (wide <= 4) buf.i32 = len;
                 else buf.i64 = len;
-                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 memcpy(&I(b)->str[I(pos)+wide], str, len);
                 I(pos) += wide + len;
             }
@@ -717,7 +725,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         BEGIN_UNPACK() {
             size_t len;
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
             if (wide <= 4)
                 len = buf.i32;
             else if ((len = (size_t)buf.i64) != buf.i64)
@@ -743,14 +751,14 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             else
                 buf.i64 = (int64_t)source_number(info);
             if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
-                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 I(pos) += wide;
             }
             lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
             I(pos) += wide;
             if (fmt == 'u' || fmt == 'U')
                 lua_pushnumber(I(L), wide <= 4 ? buf.i32 :
@@ -773,14 +781,14 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             buf.d = source_number(info);
             if (wide == 4) buf.f = (float)buf.d;
             if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
-                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 I(pos) += wide;
             }
             lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
             I(pos) += wide;
             lua_pushnumber(I(L), wide == 4 ? buf.f : buf.d); SINK();
         }
@@ -804,18 +812,25 @@ check_seek:
         break;
 
     case '{':
-        /* when meet a open-block, two value will be pushed onto
-         * stack: the current index, and a new table of block.
-         * so the extra used stack space equals 2*level.
-         */
-        luaL_checkstack(I(L), 3, "table level too big");
-        if (!I(pack)) {
+        /* when meet a open-block, 3 value will be pushed onto stack:
+         * the current index, the string key (or nil), and a new table
+         * of block.  so the extra used stack space equals level * 3.
+         * stack: [args] [[index][stringkey][table]] ... [stringkey]
+         * NOTE: if you changed stack structure, you *MUST* change the
+         * pop stack behavior in parse_fmt !!  */
+        luaL_checkstack(I(L), 4, "table level too big");
+        if (!pif_test(info, PIF_PACK)) {
+            if (!pif_test(info, PIF_STRINGKEY))
+                lua_pushnil(I(L));
             lua_pushinteger(I(L), I(index));
+            lua_insert(I(L), -2);
             lua_newtable(I(L));
         }
         else {
             source(info);
             lua_pushinteger(I(L), I(index));
+            lua_insert(I(L), -2);
+            lua_pushnil(I(L));
             lua_insert(I(L), -2);
         }
         I(level) += 1;
@@ -825,12 +840,19 @@ check_seek:
     case '}':
         if (I(level) <= 0)
             luaL_error(I(L), "unbalanced '}' in format near \"%s\"", I(fmt)-1);
-        I(index) = lua_tointeger(I(L), -2);
+        I(index) = lua_tointeger(I(L), -3);
         I(level) -= 1;
-        lua_remove(I(L), -2);
-        if (I(pack))
-            lua_pop(I(L), 1);
+        lua_remove(I(L), -3);
+        if (pif_test(info, PIF_PACK)) {
+            lua_pop(I(L), 2);
+        }
         else {
+            if (lua_isnil(I(L), -2)) {
+                lua_remove(I(L), -2);
+                pif_set(info, PIF_STRINGKEY, 0);
+            }
+            else
+                pif_set(info, PIF_STRINGKEY, 1);
             sink(info);
             CHECK_STACK(1);
         }
@@ -844,11 +866,11 @@ check_seek:
         break;
 
     case '<': /* little bigendian */
-        I(bigendian) = 1; break;
+        pif_set(info, PIF_BIGENDIAN, 1); break;
     case '>': /* big bigendian */
-        I(bigendian) = 0; break;
+        pif_set(info, PIF_BIGENDIAN, 0); break;
     case '=': /* native bigendian */
-        I(bigendian) = CPU_BIG_ENDIAN; break;
+        pif_set(info, PIF_BIGENDIAN, CPU_BIG_ENDIAN); break;
 
     default:
         luaL_error(I(L), "invalid format '%c'", fmt);
@@ -864,7 +886,7 @@ check_seek:
 }
 
 #define skip_white(s) do { while (*(s) == ' ' || *(s) == '\t' \
-    || *(s) == '\r'|| *(s) == '\n') ++(s); } while(0)
+    || *(s) == '\r'|| *(s) == '\n' || *(s) == ',') ++(s); } while(0)
 
 static int parse_optint(const char **str, unsigned int *pn) {
     unsigned int n = 0;
@@ -892,6 +914,30 @@ static void parse_fmtargs(parse_info *info, size_t *wide, int *count) {
     skip_white(info->fmt);
 }
 
+static void parse_stringkey(parse_info *info) {
+    if (isalpha(*info->fmt) || *info->fmt == '_') {
+        const char *curpos = info->fmt, *end;
+        while (isalnum(*info->fmt) || *info->fmt == '_')
+            ++info->fmt;
+        end = info->fmt;
+        skip_white(info->fmt);
+        if (*info->fmt != '=')
+            info->fmt = curpos;
+        else {
+            ++info->fmt;
+            skip_white(info->fmt);
+            if (*info->fmt == '}' || *info->fmt == '\0')
+                luaL_error(info->L, "key without format near \"%s\"", curpos);
+            if (info->level == 0)
+                luaL_error(info->L, "key at top level near \"%s\"", curpos);
+            lua_pushlstring(info->L, curpos, end - curpos);
+            pif_set(info, PIF_STRINGKEY, 1);
+            return;
+        }
+    }
+    pif_set(info, PIF_STRINGKEY, 0);
+}
+
 static int parse_fmt(parse_info *info) {
     int fmt, insert_pos = 0;
     skip_white(info->fmt);
@@ -899,12 +945,18 @@ static int parse_fmt(parse_info *info) {
         insert_pos = 1; /* only enabled in unpack */
         ++info->fmt; skip_white(info->fmt);
     }
-    while ((fmt = *info->fmt++) != '\0') {
+    while (parse_stringkey(info), (fmt = *info->fmt++) != '\0') {
         size_t wide = 0;
         int count = 1;
-        parse_fmtargs(info, &wide, &count);
+        switch (fmt) {
+        case '{': case '}': case '#':
+        case '<': case '>': case '=':
+            skip_white(info->fmt); break;
+        default:
+            parse_fmtargs(info, &wide, &count); break;
+        }
         if (!do_packfmt(info, fmt, wide, count)) {
-            lua_pop(info->L, info->level * 2);
+            lua_pop(info->L, info->level * 3); /* 3 values per level */
             info->level = 0;
             lua_pushnil(info->L); ++info->nret;
             skip_white(info->fmt);
@@ -933,9 +985,9 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
     parse_info info = {NULL};
     info.L = L;
     info.b = b;
-    info.pack = pack;
     info.narg = narg;
-    info.bigendian = CPU_BIG_ENDIAN;
+    pif_set(&info, PIF_PACK, pack);
+    pif_set(&info, PIF_BIGENDIAN, CPU_BIG_ENDIAN);
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = real_offset(lua_tointeger(L, info.narg++), info.b->len);
     info.fmt = lb_checklstring(L, info.narg++, NULL);
@@ -962,8 +1014,7 @@ static int lbE_unpack(lua_State *L) {
     return do_pack(L, lb_checkbuffer(L, 1), 2, 0);
 }
 
-static size_t check_giargs(lua_State *L, int narg, size_t len,
-        size_t *wide, int *bigendian) {
+static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int *bigendian) {
     size_t pos = real_offset(luaL_optinteger(L, narg, 1), len);
     *wide = luaL_optinteger(L, narg+1, 4);
     if (*wide < 1 || *wide > 8)
