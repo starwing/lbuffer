@@ -283,7 +283,7 @@ const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
 }
 
 /*
- * cc: flags+='-O4 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+ * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */

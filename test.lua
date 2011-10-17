@@ -293,6 +293,32 @@ function test_pack()
     ok(s == "apple", "pack imcomplete length prepend string ("..s..")")
     local pos, s = buffer "\9\0\0\0apple" :unpack "!d"
     ok(pos == 1 and s == nil, "pack imcomplete length prepend data ("..pos..")")
+    local res = string.char(0x78, 0x56, 0x34, 0x12, 0, 0, 0, 0)
+    for i = 1, 8 do
+        local b, pos = buffer.pack("!<i"..i, 0x12345678)
+        ok(pos == i+1 and b:eq(res:sub(1, i)), "pack little endian numbers ("..b:tohex' '..")")
+    end
+    local res = string.char(0xFF, 0xFF, 0xFF, 0xFF, 0xED, 0xCB, 0xA9, 0x88)
+    for i = 1, 8 do
+        local b, pos = buffer.pack("!>i"..i, -0x12345678)
+        ok(pos == i+1 and b:eq(res:sub(9-i)), "pack big endian numbers ("..b:tohex' '..")")
+    end
+    local res = string.char(0xFF):rep(8)
+    for i = 1, 8 do
+        local b, pos = buffer.pack("!>i"..i, -1)
+        ok(pos == i+1 and b:eq(res:sub(9-i)), "pack big endian numbers ("..b:tohex' '..")")
+    end
+    local res = string.char(0xFF):rep(8)
+    for i = 1, 8 do
+        local b, pos = buffer.pack("!<i"..i, -1)
+        ok(pos == i+1 and b:eq(res:sub(9-i)), "pack big endian numbers ("..b:tohex' '..")")
+    end
+    local b, pos = buffer.pack("!i8", -0x12345678)
+    ok(pos == 9 and b :eq(string.char(0x88, 0xA9, 0xCB, 0xED, 0xFF, 0xFF, 0xFF, 0xFF)),
+        "pack 64bit negitive number ("..b:tohex' '..")")
+    local b, pos = buffer.pack("!>i8", 0x12345678)
+    ok(pos == 9 and b :eq(string.char(0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78)),
+        "pack 64bit big endian number ("..b:tohex' '..")")
 end
 
 test()
