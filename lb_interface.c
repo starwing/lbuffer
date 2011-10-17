@@ -5,14 +5,6 @@
 #include <string.h>
 
 
-#if LUA_VERSION_NUM >= 502
-static int luaL_typerror (lua_State *L, int narg, const char *tname) {
-  const char *msg = lua_pushfstring(L, "%s expected, got %s",
-                                    tname, luaL_typename(L, narg));
-  return luaL_argerror(L, narg, msg);
-}
-#endif
-
 #ifdef LB_REPLACE_LUA_API
 #  undef lua_isstring
 #  undef lua_tolstring
@@ -162,13 +154,17 @@ char *lb_realloc(lua_State *L, buffer *b, size_t len) {
         lua_Alloc f;
 
         f = lua_getallocf(L, &ud);
-        newstr = (char*)f(ud, b->str, b->len, len);
+#define REAL_LEN(len) ((len) == 0 ? 0 : (len) + 1)
+        newstr = (char*)f(ud, b->str, REAL_LEN(b->len), REAL_LEN(len));
         if (len == 0 || newstr != NULL) {
+            if (newstr != NULL)
+                newstr[len] = '\0';
 #ifdef LB_SUBBUFFER
             redir_subbuffers(b, newstr, len);
 #endif
             b->str = newstr;
             b->len = len;
+#undef REAL_LEN
         }
         return newstr;
     }
@@ -244,6 +240,12 @@ const char *lb_pushlstring(lua_State *L, const char *str, size_t len) {
     return lb_pushbuffer(L, str, len)->str;
 }
 
+static int typeerror (lua_State *L, int narg, const char *tname) {
+  const char *msg = lua_pushfstring(L, "%s expected, got %s",
+                                    tname, luaL_typename(L, narg));
+  return luaL_argerror(L, narg, msg);
+}
+
 const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
     if (lua_type(L, narg) == LUA_TSTRING)
         return lua_tolstring(L, narg, plen);
@@ -251,7 +253,7 @@ const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
         buffer *b = lb_tobuffer(L, narg);
         if (b != NULL)
             return lb_tolstring(L, narg, plen);
-        luaL_typerror(L, narg, "buffer or string");
+        typeerror(L, narg, "buffer or string");
         return NULL; /* avoid warning */
     }
 }

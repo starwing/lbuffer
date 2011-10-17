@@ -36,7 +36,7 @@ if exist lua.exe.manifest^
   %MYMT% -manifest lua.exe.manifest -outputresource:lua.exe
 %MYCOMPILE% %LUA_SRC%\l*.c %LUA_SRC%\print.c
 del lua.obj linit.obj lbaselib.obj ldblib.obj liolib.obj lmathlib.obj^
-    loslib.obj ltablib.obj lstrlib.obj loadlib.obj linit_with_lbuffer.obj
+    loslib.obj ltablib.obj lstrlib.obj loadlib.obj linit_modified.obj
 %MYLINK% /out:luac.exe *.obj
 if exist luac.exe.manifest^
   %MYMT% -manifest luac.exe.manifest -outputresource:luac.exe

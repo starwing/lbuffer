@@ -7,6 +7,7 @@ function ok(assert_true, desc)
    local msg = ( assert_true and "ok " or "not ok " ) .. counter
    if ( not assert_true ) then
       failed = true
+      msg = msg .. " at line "..debug.getinfo(2, "l").currentline
    end
    if ( desc ) then
       msg = msg .. " - " .. desc
@@ -38,9 +39,9 @@ function test()
     test_copy()
     test_move()
     test_remove()
-    test_pack()
     test_cmp()
     test_mt()
+    test_pack()
     if not failed then
         test_msg "** ALL TEST PASSED!!"
     else
@@ -269,6 +270,29 @@ function test_cmp()
 end
 
 function test_pack()
+    test_msg "test pack operation"
+    local b, pos = buffer.pack("!s", "apple")
+    ok(pos == 7 and b :eq "apple\0", "pack null terminated string ("..b:quote()..")")
+    local s, pos = b :unpack "s#"
+    ok(pos == 7 and s == "apple", "unpack null terminated string ("..s..")")
+    local s, pos = b :unpack "S#"
+    ok(pos == 7 and s :eq "apple", "unpack null terminated string to buffer ("..s..")")
+    local s = buffer"apple" :unpack "s#"
+    ok(s == "apple", "unpack imcomplete null terminated string ("..s..")")
+    local s, pos = buffer"apple" :unpack "z#"
+    ok(pos == 1 and s == nil, "unpack imcomplete null terminated data ("..pos..")")
+    local s, pos = buffer"apple" :unpack "{{z}}#"
+    ok(pos == 1 and s == nil, "table balance of imcomplete data ("..pos..")")
+    local b, pos = buffer.pack("p#", "apple")
+    ok(pos == 10 and b :eq "\5\0\0\0apple", "pack length prepend string ("..b:quote()..")")
+    local pos, s = b :unpack "!p"
+    ok(pos == 10 and s == "apple", "unpack length prepend string ("..s..")")
+    local pos, s = buffer"\0\0\0\0" :unpack "!p"
+    ok(pos == 5 and s == "", "pack length without string ("..pos..")")
+    local s = buffer "\9\0\0\0apple" :unpack "p"
+    ok(s == "apple", "pack imcomplete length prepend string ("..s..")")
+    local pos, s = buffer "\9\0\0\0apple" :unpack "!d"
+    ok(pos == 1 and s == nil, "pack imcomplete length prepend data ("..pos..")")
 end
 
 test()

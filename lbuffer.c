@@ -1,8 +1,3 @@
-#ifdef _MSC_VER
-#define _CRT_SECURE_NO_WARNINGS
-#endif
-
-
 #define LUA_LIB
 #include "lbuffer.h"
 
@@ -10,14 +5,6 @@
 #include <ctype.h>
 #include <string.h>
 
-
-#if LUA_VERSION_NUM >= 502
-static int luaL_typerror (lua_State *L, int narg, const char *tname) {
-  const char *msg = lua_pushfstring(L, "%s expected, got %s",
-                                    tname, luaL_typename(L, narg));
-  return luaL_argerror(L, narg, msg);
-}
-#endif
 
 #ifdef LB_REPLACE_LUA_API
 #  undef lua_isstring
@@ -53,7 +40,7 @@ static size_t real_offset(int offset, size_t len) {
         return offset - 1;
     else if (offset <= -1 && (size_t)-offset <= len)
         return offset + len;
-    return offset > 0 ? len - 1 : 0;
+    return offset > 0 && len != 0 ? len - 1 : 0;
 }
 
 static size_t real_range(lua_State *L, int narg, size_t *plen) {
@@ -68,7 +55,7 @@ static size_t real_range(lua_State *L, int narg, size_t *plen) {
 
 /* buffer information */
 
-static int lb_isbuf(lua_State *L) {
+static int lbE_isbuffer(lua_State *L) {
 #ifdef LB_SUBBUFFER
     buffer *b;
     return lb_isbuffer(L, 1)
@@ -79,7 +66,7 @@ static int lb_isbuf(lua_State *L) {
 #endif
 }
 
-static int lb_tostring(lua_State *L) {
+static int lbE_tostring(lua_State *L) {
 #ifdef LB_SUBBUFFER
     buffer *b = NULL;
     if (lb_isbuffer(L, 1)) {
@@ -102,7 +89,7 @@ static int lb_tostring(lua_State *L) {
     return 1;
 }
 
-static int lb_tohex(lua_State *L) {
+static int lbE_tohex(lua_State *L) {
     size_t i, len, seplen;
     const char *str = lb_tolstring(L, 1, &len);
     const char *sep = lb_optlstring(L, 2, NULL, &seplen);
@@ -119,7 +106,7 @@ static int lb_tohex(lua_State *L) {
     return 1;
 }
 
-static int lb_quote(lua_State *L) {
+static int lbE_quote(lua_State *L) {
     size_t i, len;
     const char *str = lb_tolstring(L, 1, &len);
     luaL_Buffer b;
@@ -139,14 +126,14 @@ static int lb_quote(lua_State *L) {
     return 1;
 }
 
-static int lb_topointer(lua_State *L) {
+static int lbE_topointer(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t offset = real_offset(luaL_optinteger(L, 2, 1), b->len);
     lua_pushlightuserdata(L, &b->str[offset]);
     return 1;
 }
 
-static int lb_cmp(lua_State *L) {
+static int lbE_cmp(lua_State *L) {
     size_t l1, l2;
     const char *s1 = lb_checklstring(L, 1, &l1);
     const char *s2 = lb_checklstring(L, 2, &l2);
@@ -157,7 +144,7 @@ static int lb_cmp(lua_State *L) {
     return 1;
 }
 
-static int lb_eq(lua_State *L) {
+static int lbE_eq(lua_State *L) {
     /* We can do this slightly faster than lb_cmp() by comparing
      * string length first.
      */
@@ -183,15 +170,33 @@ static int lb_map(lua_State *L, int (*f)(int)) {
     return 1;
 }
 
-static int lb_lower(lua_State *L) {
+static int lbE_lower(lua_State *L) {
     return lb_map(L, tolower);
 }
 
-static int lb_upper(lua_State *L) {
+static int lbE_upper(lua_State *L) {
     return lb_map(L, toupper);
 }
 
-static int lb_len(lua_State *L) {
+static int auxipairs(lua_State *L) {
+    buffer *b = lb_checkbuffer(L, 1);
+    int key = luaL_checkint(L, 2) + 1;
+    if (key <= 0 || (size_t)key > b->len) return 0;
+    lua_pushinteger(L, key);
+    lua_pushinteger(L, uchar(b->str[key - 1]));
+    return 2;
+}
+
+static int lbE_ipairs(lua_State *L) {
+    buffer *b = lb_checkbuffer(L, 1);
+    int pos = real_offset(luaL_optinteger(L, 2, 0), b->len);
+    lua_pushcfunction(L, auxipairs);
+    lua_insert(L, 1);
+    lua_pushinteger(L, pos);
+    return 3;
+}
+
+static int lbE_len(lua_State *L) {
     if (
 #if LUA_VERSION_NUM >= 502
             !lb_isbuffer(L, 2) &&
@@ -214,7 +219,7 @@ static int lb_len(lua_State *L) {
     return 1;
 }
 
-static int lb_alloc(lua_State *L) {
+static int lbE_alloc(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     if (lb_realloc(L, b, luaL_checkint(L, 2))) {
         size_t len = 0;
@@ -227,13 +232,13 @@ static int lb_alloc(lua_State *L) {
     return 2;
 }
 
-static int lb_free(lua_State *L) {
+static int lbE_free(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     lb_realloc(L, b, 0);
     return 0;
 }
 
-static int lb_byte(lua_State *L) {
+static int lbE_byte(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t i;
     size_t len = b->len, pos = real_range(L, 2, &len);
@@ -244,7 +249,7 @@ static int lb_byte(lua_State *L) {
     return len;
 }
 
-static int lb_char(lua_State *L) {
+static int lbE_char(lua_State *L) {
     buffer *b = NULL;
     int invalid = 0;
     int i, n = lua_gettop(L);
@@ -253,7 +258,7 @@ static int lb_char(lua_State *L) {
         lua_insert(L, 1);
         n += 1;
     }
-    if (lb_realloc(L, b, n - 1) || n == 1) {
+    if (lb_realloc(L, b, n - 1)) {
         for (i = 2; i <= n; ++i) {
             int c = luaL_checkint(L, i);
             b->str[i-2] = uchar(c);
@@ -276,7 +281,8 @@ enum cmd {
     cmd_append,
     cmd_assign,
     cmd_insert,
-    cmd_set
+    cmd_set,
+    cmd_last
 };
 
 static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c, int pos, int len) {
@@ -305,6 +311,12 @@ static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
     return (const char*)u;
 }
 
+static int typeerror (lua_State *L, int base, int narg, const char *tname) {
+  const char *msg = lua_pushfstring(L, "%s expected, got %s",
+                                    tname, luaL_typename(L, narg));
+  return luaL_argerror(L, narg - base + 1, msg);
+}
+
 static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
     int pos;
     switch (c) {
@@ -316,6 +328,7 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
             pos = 0; break;
     }
 
+#define BASE (c != cmd_init ? 1 : 2)
     if (lb_isbufferorstring(L, narg)) {
         size_t len;
         const char *str = lb_tolstring(L, narg, &len);
@@ -331,7 +344,7 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
             if ((str = lb_tolstring(L, narg+1, &len)) != NULL)
                 str += real_range(L, narg+2, &len);
             else if ((str = udtolstring(L, narg+1, &len)) == NULL)
-                luaL_typerror(L, narg+1, "string, buffer or userdata");
+                typeerror(L, BASE, narg+1, "string, buffer or userdata");
         }
         if (prepare_cmd(L, b, c, pos, fill_len))
             fill_str(b, pos, fill_len, str, len);
@@ -343,19 +356,20 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
             memcpy(&b->str[pos], str, len);
     }
     else if (!lua_isnoneornil(L, narg))
-        luaL_typerror(L, narg, "string, buffer, number or userdata");
+        typeerror(L, BASE, narg, "string, buffer, number or userdata");
     lua_settop(L, narg-1);
     return 1;
+#undef BASE
 }
 
-static int lb_new(lua_State *L) {
+static int lbE_new(lua_State *L) {
     buffer *b = lb_newbuffer(L);
     lua_insert(L, 1);
     return do_cmd(L, b, 2, cmd_init);
 }
 
 #ifdef LB_SUBBUFFER
-static int lb_sub(lua_State *L) {
+static int lbE_sub(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t begin = real_offset(luaL_optinteger(L, 2, 1), b->len);
     int j = luaL_optinteger(L, 3, -1);
@@ -366,7 +380,7 @@ static int lb_sub(lua_State *L) {
     return 1;
 }
 
-static int lb_subcount(lua_State *L) {
+static int lbE_subcount(lua_State *L) {
     buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
     if (b->subcount >= 0)
         lua_pushinteger(L, b->subcount);
@@ -380,7 +394,7 @@ static int lb_subcount(lua_State *L) {
 }
 #endif
 
-static int lb_rep(lua_State *L) {
+static int lbE_rep(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t len = b->len;
     const char *str = NULL;
@@ -389,30 +403,30 @@ static int lb_rep(lua_State *L) {
         rep = lua_tointeger(L, 2);
     else if ((str = lb_tolstring(L, 2, &len)) != NULL)
         rep = luaL_checkint(L, 3);
-    else luaL_typerror(L, 2, "number, buffer or string");
+    else typeerror(L, 1, 2, "number, buffer or string");
     if (lb_realloc(L, b, len * (rep >= 0 ? rep : 0)))
         fill_str(b, 0, b->len, str != NULL ? str : b->str, len);
     lua_settop(L, 1);
     return 1;
 }
 
-static int lb_append(lua_State *L) {
+static int lbE_append(lua_State *L) {
     return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_append);
 }
 
-static int lb_assign(lua_State *L) {
+static int lbE_assign(lua_State *L) {
     return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_assign);
 }
 
-static int lb_insert(lua_State *L) {
+static int lbE_insert(lua_State *L) {
     return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_insert);
 }
 
-static int lb_set(lua_State *L) {
+static int lbE_set(lua_State *L) {
     return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_set);
 }
 
-static int lb_clear(lua_State *L) {
+static int lbE_clear(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t len = b->len, pos = real_range(L, 2, &len);
     memset(&b->str[pos], 0, len);
@@ -420,14 +434,14 @@ static int lb_clear(lua_State *L) {
     return 1;
 }
 
-static int lb_copy(lua_State *L) {
+static int lbE_copy(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t len = b->len, pos = real_range(L, 2, &len);
     lb_pushlstring(L, &b->str[pos], len);
     return 1;
 }
 
-static int lb_move(lua_State *L) {
+static int lbE_move(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     int dst = luaL_checkint(L, 2);
     size_t len = b->len, pos = real_range(L, 3, &len);
@@ -445,7 +459,7 @@ static int lb_move(lua_State *L) {
     return 1;
 }
 
-static int lb_remove(lua_State *L) {
+static int lbE_remove(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t len = b->len, pos = real_range(L, 2, &len);
     size_t end = pos + len;
@@ -467,119 +481,142 @@ static int lb_remove(lua_State *L) {
 #  define int64_t signed __int64
 #endif
 #if defined( __sparc__ ) || defined( __ppc__ )
-#	define CPU_BIG_ENDIAN
-#endif
-
-#define BIG_ENDIAN 0x4321
-#define LITTLE_ENDIAN 0x1234
-
-#ifdef CPU_BIG_ENDIAN
-#  define NATIVE_ENDIAN BIG_ENDIAN
+#	define CPU_BIG_ENDIAN 1
 #else
-#  define NATIVE_ENDIAN LITTLE_ENDIAN
+#       define CPU_BIG_ENDIAN 0
 #endif
 
 #define swap32(x) \
   (((x) >> 24) | (((x) >> 8) & 0xFF00) | (((x) & 0xFF00) << 8) | ((x) << 24))
 
-typedef union numbuf_t {
+typedef union numcast_t {
     uint32_t i32;
     uint64_t i64;
     float f;
     double d;
-} numbuf_t;
+} numcast_t;
 
 typedef struct parse_info {
     lua_State *L;
     buffer *b;
     size_t pos;
-    int pack, endian;
+    int pack, bigendian;
     int narg, nret;
+    int level, index;
     const char *fmt;
 } parse_info;
 
-#define skip_white(s) do { while (*(s) == ' ' || *(s) == '\t'\
-    || *(s) == '\r'|| *(s) == '\n') ++(s); } while(0)
-
-static int parse_optint(const char **str, unsigned int *pn) {
-    unsigned int n = 0;
-    const char *oldstr = *str;
-    while (isdigit(**str)) n = n * 10 + uchar(*(*str)++ - '0');
-    if (*str != oldstr) *pn = n;
-    return n;
-}
-
-static void parse_fmtargs(parse_info *info, size_t *wide, size_t *count) {
-    skip_white(info->fmt);
-    parse_optint(&info->fmt, wide);
-    skip_white(info->fmt);
-    if (*info->fmt == '*') {
-        ++info->fmt;
-        skip_white(info->fmt);
-        parse_optint(&info->fmt, count);
-    }
-    else if (*info->fmt == '$') {
-        ++info->fmt;
-        *count = -1;
-    }
-    skip_white(info->fmt);
-}
-
-static uint32_t read_int32(parse_info *info, int wide) {
-    const char *str = info->b->str;
-    int n = 0, pos = info->pos; info->pos += wide;
+static uint32_t read_int32(const char *str, int bigendian, int wide) {
+    int n = 0;
     switch (wide) {
-    default: luaL_error(info->L, "invalid wide: %d", wide); break;
-    case 4:           n |= uchar(str[pos++]) & 0xFF;
-    case 3:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
-    case 2:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
-    case 1:  n <<= 8; n |= uchar(str[pos++]) & 0xFF;
+    default: return 0;
+    case 4:          n |= *str++ & 0xFF;
+    case 3: n <<= 8; n |= *str++ & 0xFF;
+    case 2: n <<= 8; n |= *str++ & 0xFF;
+    case 1: n <<= 8; n |= *str++ & 0xFF;
     }
-    if (info->endian == LITTLE_ENDIAN)
+    if (!bigendian)
         n = swap32(n) >> ((4 - wide)<<3);
     return n;
 }
 
-static void write_int32(parse_info *info, uint32_t buf, int wide) {
-    char *str = info->b->str;
-    int pos = info->pos; info->pos += wide;
-    if (info->endian == BIG_ENDIAN)
-        buf = swap32(buf) >> ((4 - wide)<<3);
+static void write_int32(char *str, int bigendian, uint32_t n, int wide) {
+    if (bigendian)
+        n = swap32(n) >> ((4 - wide)<<3);
     switch (wide) {
-    default: luaL_error(info->L, "invalid wide: %d", wide); break;
-    case 4: str[pos++] = uchar(buf) & 0xFF; buf >>= 8;
-    case 3: str[pos++] = uchar(buf) & 0xFF; buf >>= 8;
-    case 2: str[pos++] = uchar(buf) & 0xFF; buf >>= 8;
-    case 1: str[pos++] = uchar(buf) & 0xFF;
+    default: return;
+    case 4: *str++ = n & 0xFF; n >>= 8;
+    case 3: *str++ = n & 0xFF; n >>= 8;
+    case 2: *str++ = n & 0xFF; n >>= 8;
+    case 1: *str++ = n & 0xFF;
     }
 }
 
-static void read_binary(parse_info *info, numbuf_t *buf, int wide) {
-    if (wide <= 4) buf->i32 = read_int32(info, wide);
+static void read_binary(const char *str, int bigendian,
+                        numcast_t *buf, int wide) {
+    if (wide <= 4) buf->i32 = read_int32(str, bigendian, wide);
     else {
-        uint32_t lo, hi; /* in big endian */
-        hi = read_int32(info, 4);
-        lo = read_int32(info, wide - 4);
-        buf->i64 = info->endian == BIG_ENDIAN ?
+        uint32_t lo, hi; /* in big bigendian */
+        hi = read_int32(str, bigendian, 4);
+        lo = read_int32(&str[4], bigendian, wide - 4);
+        buf->i64 = bigendian ?
             ((uint64_t)hi << ((wide-4)<<3)) | lo :
             ((uint64_t)lo << 32) | hi;
     }
 }
 
-static void write_binary(parse_info *info, numbuf_t *buf, int wide) {
-    if (wide <= 4) write_int32(info, buf->i32, wide);
-    else if (info->endian == BIG_ENDIAN) {
-        write_int32(info, (uint32_t)(buf->i64 >> 32), wide - 4);
-        write_int32(info, (uint32_t)buf->i64, 4);
+static void write_binary(char *str, int bigendian,
+                         numcast_t *buf, int wide) {
+    if (wide <= 4) write_int32(str, bigendian, buf->i32, wide);
+    else if (bigendian) {
+        write_int32(str, bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
+        write_int32(&str[wide-4], bigendian, (uint32_t)buf->i64, 4);
     }
     else {
-        write_int32(info, (uint32_t)buf->i64, 4);
-        write_int32(info, (uint32_t)(buf->i64 >> 32), wide - 4);
+        write_int32(str, bigendian, (uint32_t)buf->i64, 4);
+        write_int32(&str[4], bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
     }
 }
 
-static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
-    numbuf_t buf;
+static void expand_sign(numcast_t *buf, int wide) {
+    if (wide <= 4) {
+        if (wide != 4 && ((uint32_t)1 << (wide*8-1) & buf->i32) != 0)
+            buf->i32 |= ~(uint32_t)0 << (wide*8);
+    }
+    else {
+        if (wide != 8 && ((uint64_t)1 << (wide*8-1) & buf->i64) != 0)
+            buf->i64 |= ~(uint64_t)0 << (wide*8);
+    }
+}
+
+static int source(parse_info *info) {
+    if (info->level == 0)
+        lua_pushvalue(info->L, info->narg++);
+    else {
+        lua_pushinteger(info->L, info->index++);
+        lua_gettable(info->L, -2);
+    }
+    return -1;
+}
+
+static const char *source_lstring(parse_info *info, size_t *plen) {
+    int narg = source(info);
+    if (lb_isbufferorstring(info->L, narg))
+        return lb_tolstring(info->L, narg, plen);
+    else {
+        const char *msg = lua_pushfstring(info->L,
+                "buffer or string expected in table [%d], got %s",
+                info->index - 1, luaL_typename(info->L, narg));
+        luaL_argerror(info->L, info->narg-2, msg);
+    }
+    return NULL;
+}
+
+static lua_Number source_number(parse_info *info) {
+    int narg = source(info);
+    if (lua_isnumber(info->L, narg))
+        return lua_tonumber(info->L, narg);
+    else {
+        const char *msg = lua_pushfstring(info->L,
+                "number expected in table [%d], got %s",
+                info->index - 1, luaL_typename(info->L, narg));
+        luaL_argerror(info->L, info->narg-2, msg);
+    }
+    return 0;
+}
+
+static void sink(parse_info *info) {
+    if (info->level == 0)
+        ++info->nret;
+    else {
+        lua_pushinteger(info->L, info->index++);
+        lua_insert(info->L, -2);
+        lua_settable(info->L, -3);
+    }
+}
+
+static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
+    numcast_t buf;
     size_t pos;
     int top = lua_gettop(info->L);
     typedef void (*pushlstring_t)(lua_State *L, const char *str, size_t len);
@@ -588,12 +625,13 @@ static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
         (pushlstring_t)lua_pushlstring;
 
 #define I(f) (info->f)
-#define CHECK_STACK(n) luaL_checkstack(I(L), (n), "too much formats")
-#define ADD_NRET() do { ++I(nret); \
-    if (count < 0) CHECK_STACK(1); } while (0)
+#define CHECK_STACK(n) \
+        luaL_checkstack(I(L), (n), "too much top level formats")
+#define SINK() do { sink(info); \
+        if (I(level) == 0 && count < 0) CHECK_STACK(1); } while (0)
 #define BEGIN_PACK(n) \
     if (I(pack)) { \
-        if (count < 0 || lb_realloc(I(L), I(b), (n))) { \
+        if (count < 0 || n <= 0 || lb_realloc(I(L), I(b), (n))) { \
             while ((count >= 0 || I(narg) <= top) && count--)
 #define BEGIN_UNPACK() \
         } \
@@ -605,35 +643,41 @@ static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
     } break
 
     switch (fmt) {
+    case 's': case 'S': /* zero-terminated string */
     case 'z': case 'Z': /* zero-terminated string */
-        BEGIN_PACK(I(b)->len) {
+        BEGIN_PACK(0) {
             size_t len;
-            const char *str = lb_checklstring(I(L), I(narg)++, &len);
+            const char *str = source_lstring(info, &len);
             if (wide != 0 && len > wide) len = wide;
             if (lb_realloc(I(L), I(b), I(pos)+len+1)) {
                 memcpy(&I(b)->str[I(pos)], str, len);
                 I(b)->str[I(pos)+len] = '\0';
                 I(pos) += len + 1;
             }
+            lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
-            int begin = I(pos);
             size_t len = 0;
             while ((wide == 0 || len < wide)
-                    && I(pos) < blen
-                    && I(b)->str[I(pos)] != '\0')
-                ++I(pos), ++len;
-            pushlstring(I(L), &I(b)->str[begin], len);
+                    && I(pos) + len < blen
+                    && I(b)->str[I(pos) + len] != '\0')
+                ++len;
+            if ((fmt == 'z' || fmt == 'Z')
+                    && (I(pos) + len) >= blen
+                    && (wide == 0 || len < wide))
+                return 0;
+            pushlstring(I(L), &I(b)->str[I(pos)], len); SINK();
+            I(pos) += len;
             if (I(pos) < blen && I(b)->str[I(pos)] == '\0') ++I(pos);
-            ADD_NRET();
         }
         END_PACK(); 
 
+    case 'b': case 'B': /* byte */
     case 'c': case 'C': /* char */
         if (wide == 0) wide = 1;
         BEGIN_PACK(I(pos) + wide * count) {
             size_t len;
-            const char *str = lb_checklstring(I(L), I(narg)++, &len);
+            const char *str = source_lstring(info, &len);
             if (wide != 0 && len > wide) len = wide;
             if (lb_realloc(I(L), I(b), I(pos) + wide)) {
                 memcpy(&I(b)->str[I(pos)], str, len);
@@ -641,97 +685,82 @@ static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
                     memset(&I(b)->str[I(pos)+len], 0, wide - len);
                 I(pos) += wide;
             }
+            lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
-            int begin = I(pos);
-            size_t len = 0;
-            while (len < wide && I(pos) < blen)
-                ++I(pos), ++len;
-            pushlstring(I(L), &I(b)->str[begin], len);
-            if (len < wide && I(pos) < blen) ++I(pos);
-            ADD_NRET();
+            if ((fmt == 'b' || fmt == 'B')
+                    && (I(pos) + wide >= blen))
+                return 0;
+            if (I(pos) + wide > blen) wide = blen - I(pos);
+            pushlstring(I(L), &I(b)->str[I(pos)], wide); SINK();
+            I(pos) += wide;
         }
         END_PACK(); 
 
+    case 'd': case 'D': /* length preceded data */
     case 'p': case 'P': /* length preceded string */
         if (wide == 0) wide = 4;
         if (wide > 8) luaL_error(I(L), "invalid wide of format '%c': "
                 "only 1 to 8 supported.", fmt);
-        BEGIN_PACK(I(b)->len) {
+        BEGIN_PACK(0) {
             size_t len;
-            const char *str = lb_checklstring(I(L), I(narg)++, &len);
+            const char *str = source_lstring(info, &len);
             if (lb_realloc(I(L), I(b), I(pos) + wide + len)) {
-                if (wide > 4) buf.i64 = len;
-                else buf.i32 = len;
-                write_binary(info, &buf, wide);
-                memcpy(&I(b)->str[I(pos)], str, len);
-                I(pos) += len;
+                if (wide <= 4) buf.i32 = len;
+                else buf.i64 = len;
+                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+                memcpy(&I(b)->str[I(pos)+wide], str, len);
+                I(pos) += wide + len;
             }
+            lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             size_t len;
             if (I(pos) + wide > blen) return 0;
-            read_binary(info, &buf, wide);
+            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
             if (wide <= 4)
                 len = buf.i32;
             else if ((len = (size_t)buf.i64) != buf.i64)
                 luaL_error(I(L), "string too big in format '%c'", fmt);
-            if (I(pos) + len > blen) return 0;
-            pushlstring(I(L), &I(b)->str[I(pos)], len);
+            if ((fmt == 'd' || fmt == 'D') && I(pos) + wide + len > blen)
+                return 0;
+            I(pos) += wide;
+            if (I(pos) + len > blen)
+                len = blen - I(pos);
+            pushlstring(I(L), &I(b)->str[I(pos)], len); SINK();
             I(pos) += len;
-            ADD_NRET();
         }
         END_PACK();
 
     case 'i': case 'I': /* int */
-        if (wide == 0) wide = 4;
-        if (wide > 8) luaL_error(I(L), "invalid wide of format '%c': "
-                "only 1 to 8 supported.", fmt);
-        BEGIN_PACK(I(pos) + wide * count) {
-            if (wide > 4)
-                buf.i64 = (int64_t)luaL_checknumber(I(L), I(narg)++);
-            else
-                buf.i32 = (int32_t)luaL_checknumber(I(L), I(narg)++);
-            if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide))
-                write_binary(info, &buf, wide);
-        }
-        BEGIN_UNPACK() {
-            if (I(pos) + wide > blen) return 0;
-            read_binary(info, &buf, wide);
-            if (wide > 4) {
-                if (wide != 8 && ((uint64_t)1 << (wide*8-1) & buf.i64) != 0)
-                    buf.i64 |= ~(uint64_t)0 << (wide*8);
-                lua_pushnumber(I(L), (lua_Number)(int64_t)buf.i64);
-            }
-            else {
-                if (wide != 4 && ((uint32_t)1 << (wide*8-1) & buf.i32) != 0)
-                    buf.i32 |= ~(uint32_t)0 << (wide*8);
-                lua_pushnumber(I(L), (int32_t)buf.i32);
-            }
-            ADD_NRET();
-        }
-        END_PACK();
-
     case 'u': case 'U': /* unsigend int */
         if (wide == 0) wide = 4;
         if (wide > 8) luaL_error(I(L), "invalid wide of format '%c': "
                 "only 1 to 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
-            if (wide > 4)
-                buf.i64 = (/*u*/int64_t)luaL_checknumber(I(L), I(narg)++);
+            if (wide <= 4)
+                buf.i32 = (int32_t)source_number(info);
             else
-                buf.i32 = (/*u*/int32_t)luaL_checknumber(I(L), I(narg)++);
-            if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide))
-                write_binary(info, &buf, wide);
+                buf.i64 = (int64_t)source_number(info);
+            if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
+                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+                I(pos) += wide;
+            }
+            lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(info, &buf, wide);
-            if (wide > 4)
-                lua_pushnumber(I(L), (lua_Number)buf.i64);
-            else
-                lua_pushnumber(I(L), buf.i32);
-            ADD_NRET();
+            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+            I(pos) += wide;
+            if (fmt == 'u' || fmt == 'U')
+                lua_pushnumber(I(L), wide <= 4 ? buf.i32 :
+                        (lua_Number)buf.i64);
+            else {
+                expand_sign(&buf, wide);
+                lua_pushnumber(I(L), wide <= 4 ? (int32_t)buf.i32 :
+                        (lua_Number)(int64_t)buf.i64);
+            }
+            SINK();
         }
         END_PACK();
 
@@ -741,35 +770,21 @@ static int do_fmt(parse_info *info, char fmt, size_t wide, size_t count) {
             luaL_error(I(L), "invalid wide of format '%c': "
                     "only 4 or 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
-            buf.d = luaL_checknumber(I(L), I(narg)++);
+            buf.d = source_number(info);
             if (wide == 4) buf.f = (float)buf.d;
             if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
-                write_binary(info, &buf, wide);
+                write_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
                 I(pos) += wide;
             }
+            lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(info, &buf, wide);
-            if (wide == 4)
-                lua_pushnumber(I(L), buf.f);
-            else
-                lua_pushnumber(I(L), buf.d);
-            ADD_NRET();
+            read_binary(&I(b)->str[I(pos)], I(bigendian), &buf, wide);
+            I(pos) += wide;
+            lua_pushnumber(I(L), wide == 4 ? buf.f : buf.d); SINK();
         }
         END_PACK(); 
-
-    case '#': /* current pos */
-        lua_pushinteger(I(L), I(pos) + 1);
-        ADD_NRET();
-        break;
-
-    case '<': /* little endian */
-        I(endian) = LITTLE_ENDIAN; break;
-    case '>': /* big endian */
-        I(endian) = BIG_ENDIAN; break;
-    case '=': /* native endian */
-        I(endian) = NATIVE_ENDIAN; break;
 
     case '@': /* seek for absolute address */
         pos = wide * count - 1; goto check_seek;
@@ -788,6 +803,53 @@ check_seek:
         I(pos) = pos;
         break;
 
+    case '{':
+        /* when meet a open-block, two value will be pushed onto
+         * stack: the current index, and a new table of block.
+         * so the extra used stack space equals 2*level.
+         */
+        luaL_checkstack(I(L), 3, "table level too big");
+        if (!I(pack)) {
+            lua_pushinteger(I(L), I(index));
+            lua_newtable(I(L));
+        }
+        else {
+            source(info);
+            lua_pushinteger(I(L), I(index));
+            lua_insert(I(L), -2);
+        }
+        I(level) += 1;
+        I(index) = 1;
+        break;
+
+    case '}':
+        if (I(level) <= 0)
+            luaL_error(I(L), "unbalanced '}' in format near \"%s\"", I(fmt)-1);
+        I(index) = lua_tointeger(I(L), -2);
+        I(level) -= 1;
+        lua_remove(I(L), -2);
+        if (I(pack))
+            lua_pop(I(L), 1);
+        else {
+            sink(info);
+            CHECK_STACK(1);
+        }
+        break;
+
+    case '#': /* current pos */
+        if (I(level) != 0)
+            luaL_error(I(L), "can only retrieve position out of block");
+        lua_pushinteger(I(L), I(pos) + 1);
+        SINK();
+        break;
+
+    case '<': /* little bigendian */
+        I(bigendian) = 1; break;
+    case '>': /* big bigendian */
+        I(bigendian) = 0; break;
+    case '=': /* native bigendian */
+        I(bigendian) = CPU_BIG_ENDIAN; break;
+
     default:
         luaL_error(I(L), "invalid format '%c'", fmt);
         break;
@@ -796,29 +858,70 @@ check_seek:
 #undef END_PACK
 #undef BEGIN_UNPACK
 #undef BEGIN_PACK
-#undef ADD_NRET
+#undef SINK
 #undef CHECK_STACK
 #undef I
+}
+
+#define skip_white(s) do { while (*(s) == ' ' || *(s) == '\t' \
+    || *(s) == '\r'|| *(s) == '\n') ++(s); } while(0)
+
+static int parse_optint(const char **str, unsigned int *pn) {
+    unsigned int n = 0;
+    const char *oldstr = *str;
+    while (isdigit(**str)) n = n * 10 + uchar(*(*str)++ - '0');
+    if (*str != oldstr) *pn = n;
+    return n;
+}
+
+static void parse_fmtargs(parse_info *info, size_t *wide, int *count) {
+    skip_white(info->fmt);
+    parse_optint(&info->fmt, wide);
+    skip_white(info->fmt);
+    if (*info->fmt == '*') {
+        size_t ucount = *count;
+        ++info->fmt;
+        skip_white(info->fmt);
+        parse_optint(&info->fmt, &ucount);
+        *count = ucount;
+    }
+    else if (*info->fmt == '$') {
+        ++info->fmt;
+        *count = -1;
+    }
+    skip_white(info->fmt);
 }
 
 static int parse_fmt(parse_info *info) {
     int fmt, insert_pos = 0;
     skip_white(info->fmt);
     if (*info->fmt == '!') {
-        insert_pos = !info->pack; /* only enabled in unpack */
+        insert_pos = 1; /* only enabled in unpack */
         ++info->fmt; skip_white(info->fmt);
     }
     while ((fmt = *info->fmt++) != '\0') {
-        size_t wide = 0, count = 1;
+        size_t wide = 0;
+        int count = 1;
         parse_fmtargs(info, &wide, &count);
-        if (!do_fmt(info, fmt, wide, count)) {
+        if (!do_packfmt(info, fmt, wide, count)) {
+            lua_pop(info->L, info->level * 2);
+            info->level = 0;
+            lua_pushnil(info->L); ++info->nret;
+            skip_white(info->fmt);
+            /* skip any block */
+            while (*info->fmt == '{' || *info->fmt == '}') {
+                ++info->fmt;
+                skip_white(info->fmt);
+            }
             if ((fmt = *info->fmt++) == '#') {
                 parse_fmtargs(info, &wide, &count);
-                do_fmt(info, fmt, 0, 0);
+                do_packfmt(info, fmt, 0, 0);
             }
             break;
         }
     }
+    if (info->level != 0)
+        luaL_error(info->L, "unbalanced '{' in format");
     if (insert_pos) {
         lua_pushinteger(info->L, info->pos + 1);
         lua_insert(info->L, -(++info->nret));
@@ -832,7 +935,7 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
     info.b = b;
     info.pack = pack;
     info.narg = narg;
-    info.endian = NATIVE_ENDIAN;
+    info.bigendian = CPU_BIG_ENDIAN;
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = real_offset(lua_tointeger(L, info.narg++), info.b->len);
     info.fmt = lb_checklstring(L, info.narg++, NULL);
@@ -846,7 +949,7 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
     return info.nret;
 }
 
-static int lb_pack(lua_State *L) {
+static int lbE_pack(lua_State *L) {
     buffer *b;
     if ((b = lb_tobuffer(L, 1)) == NULL) {
         b = lb_newbuffer(L);
@@ -855,13 +958,70 @@ static int lb_pack(lua_State *L) {
     return do_pack(L, b, 2, 1);
 }
 
-static int lb_unpack(lua_State *L) {
+static int lbE_unpack(lua_State *L) {
     return do_pack(L, lb_checkbuffer(L, 1), 2, 0);
+}
+
+static size_t check_giargs(lua_State *L, int narg, size_t len,
+        size_t *wide, int *bigendian) {
+    size_t pos = real_offset(luaL_optinteger(L, narg, 1), len);
+    *wide = luaL_optinteger(L, narg+1, 4);
+    if (*wide < 1 || *wide > 8)
+        luaL_argerror(L, 3, "only 1 to 8 wide support");
+    switch (*luaL_optlstring(L, narg+2, "bigendian", NULL)) {
+    case 'b': case 'B': case '>': *bigendian = 1; break;
+    case 'l': case 'L': case '<': *bigendian = 0; break;
+    default: luaL_argerror(L, 4, "only \"big\" or \"little\" endian support");
+    }
+    return pos;
+}
+
+static int lbE_getint(lua_State *L) {
+    numcast_t buf;
+    size_t len;
+    const char *str = lb_checklstring(L, 1, &len);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
+    if (pos + wide > len) return 0;
+    read_binary(&str[pos], bigendian, &buf, wide);
+    expand_sign(&buf, wide);
+    lua_pushnumber(L, wide <= 4 ? (int32_t)buf.i32 :
+            (lua_Number)(int64_t)buf.i64);
+    return 1;
+}
+
+static int lbE_getuint(lua_State *L) {
+    numcast_t buf;
+    size_t len;
+    const char *str = lb_checklstring(L, 1, &len);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
+    if (pos + wide > len) return 0;
+    read_binary(&str[pos], bigendian, &buf, wide);
+    lua_pushnumber(L, wide <= 4 ? buf.i32 : (lua_Number)buf.i64);
+    return 1;
+}
+
+static int lbE_setuint(lua_State *L) {
+    numcast_t buf;
+    buffer *b = lb_checkbuffer(L, 1);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 3, b->len, &wide, &bigendian);
+    if (grow_buffer(L, b, pos + wide)) {
+        /* we use int64_t with i64, because if we use uint64_t, the
+         * high 32 bit of 64bit integer will be stripped, don't know
+         * why it happened.  */
+        if (wide <= 4) buf.i32 = (/*u*/int32_t)luaL_checknumber(L, 2);
+        else buf.i64 = (/*u*/int64_t)luaL_checknumber(L, 2);
+        write_binary(&b->str[pos], bigendian, &buf, wide);
+    }
+    lua_settop(L, 1);
+    return 1;
 }
 
 /* meta methods */
 
-static int lb_gc(lua_State *L) {
+static int lbM_gc(lua_State *L) {
     if (lb_isbuffer(L, 1)) {
         buffer *b = (buffer*)lua_touserdata(L, 1);
 #ifdef LB_SUBBUFFER
@@ -875,12 +1035,16 @@ static int lb_gc(lua_State *L) {
     return 0;
 }
 
-static int lb_concat(lua_State *L) {
-    size_t len;
-    const char *str = lb_checklstring(L, 1, &len);
-    buffer *b = lb_pushbuffer(L, str, len);
+static int lbM_concat(lua_State *L) {
+    size_t l1, l2;
+    const char *s1 = lb_checklstring(L, 1, &l1);
+    const char *s2 = lb_checklstring(L, 2, &l2);
+    buffer *b = lb_pushbuffer(L, s1, l1);
     lua_replace(L, 1);
-    return do_cmd(L, b, 2, cmd_append);
+    if (lb_realloc(L, b, l1+l2))
+        memcpy(&b->str[l1], s2, l2);
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int check_offset(int offset, int len, int extra) {
@@ -893,7 +1057,7 @@ static int check_offset(int offset, int len, int extra) {
     return offset;
 }
 
-static int lb_index(lua_State *L) {
+static int lbM_index(lua_State *L) {
 #ifdef LB_SUBBUFFER
     buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
 #else
@@ -919,7 +1083,7 @@ static int lb_index(lua_State *L) {
     return 1;
 }
 
-static int lb_newindex(lua_State *L) {
+static int lbM_newindex(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     int pos;
     if ((pos = check_offset(luaL_checkint(L, 2), b->len, 1)) < 0)
@@ -945,87 +1109,63 @@ static int lb_newindex(lua_State *L) {
     return 0;
 }
 
-static int lb_call(lua_State *L) {
-    size_t len;
-    const char *str;
+static int lbM_call(lua_State *L) {
     buffer *b = lb_newbuffer(L);
     lua_replace(L, 1);
-    if (lua_gettop(L) == 2 && (str = lua_tolstring(L, 2, &len)) != NULL) {
-        if (lb_realloc(L, b, len + 1)) {
-            memcpy(b->str, str, len);
-            b->str[len] = '\0';
-        }
-        lua_settop(L, 1);
-        return 1;
-    }
     return do_cmd(L, b, 2, cmd_init);
-}
-
-static int auxipairs(lua_State *L) {
-    buffer *b = lb_checkbuffer(L, 1);
-    int key = luaL_checkint(L, 2) + 1;
-    if (key <= 0 || (size_t)key > b->len) return 0;
-    lua_pushinteger(L, key);
-    lua_pushinteger(L, uchar(b->str[key - 1]));
-    return 2;
-}
-
-static int lb_ipairs(lua_State *L) {
-    buffer *b = lb_checkbuffer(L, 1);
-    int pos = real_offset(luaL_optinteger(L, 2, 0), b->len);
-    lua_pushcfunction(L, auxipairs);
-    lua_insert(L, 1);
-    lua_pushinteger(L, pos);
-    return 3;
 }
 
 /* module registration */
 
-static luaL_Reg funcs[] = {
-    { "isbuffer",  lb_isbuf     },
-    { "new",       lb_new       },
-    { "tostring",  lb_tostring  },
-    { "tohex",     lb_tohex     },
-    { "quote",     lb_quote     },
-    { "topointer", lb_topointer },
-    { "ipairs",    lb_ipairs    },
-    { "cmp",       lb_cmp       },
-    { "eq",        lb_eq        },
-    { "lower",     lb_lower     },
-    { "upper",     lb_upper     },
-    { "rep",       lb_rep       },
-    { "len",       lb_len       },
-    { "alloc",     lb_alloc     },
-    { "free",      lb_free      },
+static const luaL_Reg funcs[] = {
+    { "isbuffer",  lbE_isbuffer  },
+    { "new",       lbE_new       },
+    { "tostring",  lbE_tostring  },
+    { "tohex",     lbE_tohex     },
+    { "quote",     lbE_quote     },
+    { "topointer", lbE_topointer },
+    { "ipairs",    lbE_ipairs    },
+    { "cmp",       lbE_cmp       },
+    { "eq",        lbE_eq        },
+    { "lower",     lbE_lower     },
+    { "upper",     lbE_upper     },
+    { "rep",       lbE_rep       },
+    { "len",       lbE_len       },
+    { "alloc",     lbE_alloc     },
+    { "free",      lbE_free      },
 #ifdef LB_SUBBUFFER
-    { "sub",       lb_sub       },
-    { "subcount",  lb_subcount  },
+    { "sub",       lbE_sub       },
+    { "subcount",  lbE_subcount  },
 #endif
-    { "append",    lb_append    },
-    { "assign",    lb_assign    },
-    { "insert",    lb_insert    },
-    { "set",       lb_set       },
-    { "byte",      lb_byte      },
-    { "char",      lb_char      },
-    { "clear",     lb_clear     },
-    { "copy",      lb_copy      },
-    { "move",      lb_move      },
-    { "remove",    lb_remove    },
-    { "pack",      lb_pack      },
-    { "unpack",    lb_unpack    },
-    { NULL,        NULL         },
+    { "append",    lbE_append    },
+    { "assign",    lbE_assign    },
+    { "insert",    lbE_insert    },
+    { "set",       lbE_set       },
+    { "byte",      lbE_byte      },
+    { "char",      lbE_char      },
+    { "clear",     lbE_clear     },
+    { "copy",      lbE_copy      },
+    { "move",      lbE_move      },
+    { "remove",    lbE_remove    },
+    { "getint",    lbE_getint    },
+    { "setint",    lbE_setuint   },
+    { "getuint",   lbE_getuint   },
+    { "setuint",   lbE_setuint   },
+    { "pack",      lbE_pack      },
+    { "unpack",    lbE_unpack    },
+    { NULL,        NULL          },
 };
 
-static luaL_Reg mt[] = {
-    { "__concat",  lb_concat    },
-    { "__len",     lb_len       },
-    { "__tostring",lb_tostring  },
-    { "__index",   lb_index     },
-    { "__newindex",lb_newindex  },
-    { "__gc",      lb_gc        },
-    { "__ipairs",  lb_ipairs    },
-    { "__pairs",   lb_ipairs    },
-    { NULL,        NULL         },
+static const luaL_Reg mt[] = {
+    { "__concat",  lbM_concat    },
+    { "__len",     lbE_len       },
+    { "__tostring",lbE_tostring  },
+    { "__index",   lbM_index     },
+    { "__newindex",lbM_newindex  },
+    { "__gc",      lbM_gc        },
+    { "__ipairs",  lbE_ipairs    },
+    { "__pairs",   lbE_ipairs    },
+    { NULL,        NULL          },
 };
 
 LUALIB_API int luaopen_buffer(lua_State *L) {
@@ -1037,7 +1177,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
 #endif
     lua_createtable(L, 0, 1); /* 2 */
     lua_pushliteral(L, "__call"); /* 3 */
-    lua_pushcfunction(L, lb_call); /* 4 */
+    lua_pushcfunction(L, lbM_call); /* 4 */
     lua_rawset(L, -3); /* 3,4->2 */
     lua_setmetatable(L, -2); /* 2->1 */
 
@@ -1057,7 +1197,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
         luaL_register(L, NULL, mt);
         lua_pushliteral(L, "__index"); /* 3 */
         lua_pushvalue(L, -3); /* 4 */
-        lua_pushcclosure(L, lb_index, 1); /* 4->4 */
+        lua_pushcclosure(L, lbM_index, 1); /* 4->4 */
         lua_rawset(L, -3); /* 3,4->2 */
 #endif
     }
@@ -1067,7 +1207,7 @@ LUALIB_API int luaopen_buffer(lua_State *L) {
 }
 
 /*
- * cc: flags+='-O4 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+ * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */
