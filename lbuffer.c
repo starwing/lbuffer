@@ -519,7 +519,8 @@ typedef struct parse_info {
 #define PIF_STRINGKEY    0x04
 
 #define pif_test(i, f)      (((i)->flags & (f)) != 0)
-#define pif_set(i, f, b)    ((b) ? ((i)->flags |= (f)) : ((i)->flags &= ~(f)))
+#define pif_clr(i, f)       ((i)->flags &= ~(f))
+#define pif_set(i, f)       ((i)->flags |= (f))
 
 
 #ifndef LB_ARTHBIT
@@ -669,8 +670,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         (pushlstring_t)lb_pushlstring :
         (pushlstring_t)lua_pushlstring;
 
-#define SINK() do { sink(info); \
-        if (I(level) == 0 && count < 0) pack_checkstack(1); } while (0)
+#define SINK() do { if (I(level) == 0 && count < 0) pack_checkstack(1); \
+    sink(info); } while (0)
 #define BEGIN_PACK(n) \
     if (pif_test(info, PIF_PACK)) { \
         if (count < 0 || n <= 0 || lb_realloc(I(L), I(b), (n))) { \
@@ -902,14 +903,14 @@ static int do_delimiter(parse_info *info, char fmt) {
             lua_pop(I(L), 2);
         }
         else {
-            if (lua_isnil(I(L), -2)) {
+            if (!lua_isnil(I(L), -2))
+                pif_set(info, PIF_STRINGKEY);
+            else {
                 lua_remove(I(L), -2);
-                pif_set(info, PIF_STRINGKEY, 0);
+                pif_clr(info, PIF_STRINGKEY);
             }
-            else
-                pif_set(info, PIF_STRINGKEY, 1);
-            sink(info);
             pack_checkstack(1);
+            sink(info);
         }
         break;
 
@@ -917,16 +918,21 @@ static int do_delimiter(parse_info *info, char fmt) {
         if (I(level) != 0)
             luaL_error(I(L), "can only retrieve position out of block");
         lua_pushinteger(I(L), I(pos) + 1);
-        sink(info);
         pack_checkstack(1);
+        sink(info);
         break;
 
     case '<': /* little bigendian */
-        pif_set(info, PIF_BIGENDIAN, 0); break;
+        pif_clr(info, PIF_BIGENDIAN); break;
     case '>': /* big bigendian */
-        pif_set(info, PIF_BIGENDIAN, 1); break;
+        pif_set(info, PIF_BIGENDIAN); break;
     case '=': /* native bigendian */
-        pif_set(info, PIF_BIGENDIAN, CPU_BIG_ENDIAN); break;
+#if CPU_BIG_ENDIAN
+            pif_set(info, PIF_BIGENDIAN);
+#else
+            pif_clr(info, PIF_BIGENDIAN);
+#endif
+        break;
 
     default:
         return 0;
@@ -981,11 +987,11 @@ static void parse_stringkey(parse_info *info) {
             if (I(level) == 0)
                 luaL_error(I(L), "key at top level near \"%s\"", curpos);
             lua_pushlstring(I(L), curpos, end - curpos);
-            pif_set(info, PIF_STRINGKEY, 1);
+            pif_set(info, PIF_STRINGKEY);
             return;
         }
     }
-    pif_set(info, PIF_STRINGKEY, 0);
+    pif_clr(info, PIF_STRINGKEY);
 }
 
 static int parse_fmt(parse_info *info) {
@@ -1030,8 +1036,10 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
     info.L = L;
     info.b = b;
     info.narg = narg;
-    pif_set(&info, PIF_PACK, pack);
-    pif_set(&info, PIF_BIGENDIAN, CPU_BIG_ENDIAN);
+    if (pack) pif_set(&info, PIF_PACK);
+#if CPU_BIG_ENDIAN
+    pif_set(&info, PIF_BIGENDIAN);
+#endif
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = real_offset(lua_tointeger(L, info.narg++), info.b->len);
     info.fmt = lb_checklstring(L, info.narg++, NULL);
