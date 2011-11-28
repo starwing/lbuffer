@@ -147,18 +147,11 @@ static int lbE_cmp(lua_State *L) {
 
 static int lbE_eq(lua_State *L) {
     /* We can do this slightly faster than lb_cmp() by comparing
-     * string length first.
-     */
+     * string length first.  */
     size_t l1, l2;
     const char *s1 = lb_checklstring(L, 1, &l1);
     const char *s2 = lb_checklstring(L, 2, &l2);
-    int res;
-    if ( l1 != l2 ) {
-        res = 0;
-    } else {
-        res = !memcmp(s1, s2, l1);
-    }
-    lua_pushboolean(L, res);
+    lua_pushboolean(L, l1 == l2 && memcmp(s1, s2, l1) == 0);
     return 1;
 }
 
@@ -200,7 +193,7 @@ static int lbE_ipairs(lua_State *L) {
 static int lbE_len(lua_State *L) {
     if (
 #if LUA_VERSION_NUM >= 502
-            !lb_isbuffer(L, 2) &&
+            !lua_rawequal(L, 1, 2) &&
 #endif
             !lua_isnoneornil(L, 2)) {
         buffer *b = lb_checkbuffer(L, 1);
