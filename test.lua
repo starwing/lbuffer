@@ -154,7 +154,7 @@ function test_sub()
             ok(tostring(t[1]):match "^%(invalid subbuffer%): %d+",
                 "invalid subbuffer has special name ("..tostring(t[1])..")")
             ok(not t[1]:isbuffer(), "invalid subbuffer is not buffer ("..
-                  (t[1]:isbuffer() and "true" or "false")..")")
+                  tostring(t[1]:isbuffer() or nil)..")")
         end
         collectgarbage()
         ok(b:subcount() == 0, "after collectgarbage the subbuffers cleared ("..b:subcount()..")")
@@ -165,6 +165,11 @@ function test_sub()
         ok(sb :eq '-', "subbuffer in the middle of buffer ("..sb..")")
         sb:assign "(xxx)"
         ok(b :eq "apple(xxx)pie", "subbuffer modified original buffer ("..b..")")
+        b:len(3)
+        ok(b :eq "app", "original buffer set length before the begining of subbuffer ("..b..")")
+        ok(not sb:isbuffer(), "and subbuffer is invalid ("..tostring(sb)..")")
+        local b = buffer "apple-pie"
+        local sb = b:sub(6, 6)
         b:len(5)
         ok(b :eq "apple", "original buffer set length to the begining of subbuffer ("..b..")")
         ok(sb:isbuffer(), "and subbuffer is also valid ("..sb..")")
@@ -174,6 +179,13 @@ function test_sub()
         ok(sb :eq "-pie", "subbuffer in the middle of buffer ("..sb..")")
         b:len(8)
         ok(sb :eq "-pi", "shorten original buffer, and subbuffer also shortted ("..sb..")")
+        local b = buffer "apple-pie"
+        local sb = b:sub(1,1)
+        local sb2 = b:sub(2,2)
+        local sb3 = b:sub(1,1)
+        local sb4 = b:sub(2,2)
+        local sb5 = b:sub(2,2)
+        ok(b:subcount() == 2, "same subbuffer only has one entity ("..b:subcount()..")")
     end
 end
 
