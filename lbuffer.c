@@ -1254,10 +1254,10 @@ static const luaL_Reg mt[] = {
 };
 
 LUALIB_API int luaopen_buffer(lua_State *L) {
-    const char *libname = lua_gettop(L) >= 1 ? lua_tostring(L, 1) : NULL;
 #if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs); /* 1 */
 #else
+    const char *libname = lua_gettop(L) >= 1 ? lua_tostring(L, 1) : NULL;
     luaL_register(L, libname != NULL ? libname : LB_LIBNAME, funcs); /* 1 */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
