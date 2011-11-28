@@ -12,9 +12,10 @@
 
 
 #ifdef LB_SUBBUFFER
+#define LB_SBPTR_BOX            "subbuffer-ptrbox"
 #define LB_SUBS_MAX             4
-#define LB_SUB                  -1
-#define LB_INVALID_SUB          -2
+#define LB_SUB                 -1
+#define LB_INVALID_SUB         -2
 
 typedef struct subbuffer {
     LB_STRUCT_HEADER;

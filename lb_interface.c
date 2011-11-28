@@ -31,22 +31,69 @@ subbuffer *lb_initsubbuffer(subbuffer *b) {
     return b;
 }
 
+static void register_subbuffer(lua_State *L, subbuffer *sb) {
+    lua_getfield(L, LUA_REGISTRYINDEX, LB_SBPTR_BOX); /* 2 */
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1); /* (2) */
+        lua_createtable(L, 0, 1); /* 2 */
+        lua_createtable(L, 0, 1); /* 3 */
+        lua_pushliteral(L, "__mode"); /* 4 */
+        lua_pushliteral(L, "v"); /* 5 */
+        lua_rawset(L, -3); /* 4,5->3 */
+        lua_setmetatable(L, -2); /* 3->2 */
+        lua_pushvalue(L, -1); /* 2->3 */
+        lua_setfield(L, LUA_REGISTRYINDEX, LB_SBPTR_BOX); /* 3->(reg) */
+    }
+    lua_pushlightuserdata(L, sb); /* 3 */
+    lua_pushvalue(L, -3); /* 1->4 */
+    lua_rawset(L, -3); /* 3,4->2 */
+    lua_pop(L, 1); /* (2) */
+}
+
+static subbuffer *retrieve_subbuffer(lua_State *L, subbuffer *sb) {
+    lua_getfield(L, LUA_REGISTRYINDEX, LB_SBPTR_BOX);
+    if (!lua_isnil(L, -1)) {
+        lua_pushlightuserdata(L, sb);
+        lua_rawget(L, -2);
+        lua_remove(L, -2);
+        if (!lua_isnil(L, -1))
+            return sb;
+    }
+    lua_pop(L, 1);
+    return NULL;
+}
+
 buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
-    subbuffer *sb = (subbuffer*)lua_newuserdata(L, sizeof(subbuffer)); /* 1 */
-    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
-    lua_setmetatable(L, -2); /* 2->1 */
+    subbuffer *sb;
+    int i;
+    char *str;
+    size_t len;
     begin = begin > b->len ? b->len : begin;
     end = end > b->len ? b->len : end;
+    str = &b->str[begin];
+    len = begin < end ? end - begin : 0;
+
+    for (i = 0; i < b->subcount; ++i) {
+        if (b->subs[i]->str == str
+                && b->subs[i]->len == len
+                && (sb = retrieve_subbuffer(L, b->subs[i])) != NULL)
+            return (buffer*)sb;
+    }
+
+    sb = (subbuffer*)lua_newuserdata(L, sizeof(subbuffer)); /* 1 */
+    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
+    lua_setmetatable(L, -2); /* 2->1 */
 
     if (b->subcount == LB_SUBS_MAX)
         lb_removesubbuffer(b->subs[0]);
     b->subs[b->subcount++] = sb;
 
-    sb->str = &b->str[begin];
-    sb->len = begin < end ? end - begin : 0;
+    sb->str = str;
+    sb->len = len;
     sb->parent = b;
     sb->subtype = LB_SUB;
 
+    register_subbuffer(L, sb);
     return (buffer*)sb;
 }
 

@@ -23,7 +23,8 @@ static char *grow_buffer(lua_State *L, buffer *b, size_t len) {
     return b->str;
 }
 
-static void fill_str(buffer *b, int pos, size_t fill_len, const char *str, size_t len) {
+static void fill_str(buffer *b, int pos, size_t fill_len,
+        const char *str, size_t len) {
     if (str == NULL || len <= 1)
         memset(&b->str[pos], len == 1 ? str[0] : 0, fill_len);
     else if (fill_len != 0) {
@@ -285,7 +286,8 @@ enum cmd {
     cmd_last
 };
 
-static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c, int pos, int len) {
+static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c,
+        int pos, int len) {
     size_t oldlen = b->len;
     char *newstr = NULL;
     if (c == cmd_assign)
@@ -558,7 +560,8 @@ static void write_int32(char *str, int bigendian, uint32_t n, int wide) {
 }
 #endif /* LB_ARTHBIT */
 
-static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t wide) {
+static void read_binary(const char *str, int bigendian,
+        numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
     buf->i64 = 0;
     memcpy(&buf->c[bigendian ? (8 - wide) % 4 : 0], str, wide);
@@ -576,7 +579,8 @@ static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t w
 #endif /* LB_ARTHBIT */
 }
 
-static void write_binary(char *str, int bigendian, numcast_t *buf, size_t wide) {
+static void write_binary(char *str, int bigendian,
+        numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
     swap_binary(bigendian, buf, wide);
     memcpy(str, &buf->c[bigendian ? (8 - wide) % 4 : 0], wide);
@@ -746,7 +750,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             if (lb_realloc(I(L), I(b), I(pos) + wide + len)) {
                 if (wide <= 4) buf.i32 = len;
                 else buf.i64 = len;
-                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+                write_binary(&I(b)->str[I(pos)],
+                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 memcpy(&I(b)->str[I(pos)+wide], str, len);
                 I(pos) += wide + len;
             }
@@ -755,7 +760,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         BEGIN_UNPACK() {
             size_t len;
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+            read_binary(&I(b)->str[I(pos)],
+                    pif_test(info, PIF_BIGENDIAN), &buf, wide);
             if (wide <= 4)
                 len = buf.i32;
             else if ((len = (size_t)buf.i64) != buf.i64)
@@ -780,15 +786,18 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
                 buf.i32 = (int32_t)source_number(info);
             else
                 buf.i64 = (int64_t)source_number(info);
-            if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
-                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+            if (count >= 0
+                    || lb_realloc(I(L), I(b), I(pos) + wide)) {
+                write_binary(&I(b)->str[I(pos)],
+                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 I(pos) += wide;
             }
             lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+            read_binary(&I(b)->str[I(pos)],
+                    pif_test(info, PIF_BIGENDIAN), &buf, wide);
             I(pos) += wide;
             if (fmt == 'u' || fmt == 'U')
                 lua_pushnumber(I(L), wide <= 4 ? buf.i32 :
@@ -811,14 +820,16 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             buf.d = source_number(info);
             if (wide == 4) buf.f = (float)buf.d;
             if (count >= 0 || lb_realloc(I(L), I(b), I(pos) + wide)) {
-                write_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+                write_binary(&I(b)->str[I(pos)],
+                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
                 I(pos) += wide;
             }
             lua_pop(I(L), 1); /* pop source */
         }
         BEGIN_UNPACK() {
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(b)->str[I(pos)], pif_test(info, PIF_BIGENDIAN), &buf, wide);
+            read_binary(&I(b)->str[I(pos)],
+                    pif_test(info, PIF_BIGENDIAN), &buf, wide);
             I(pos) += wide;
             lua_pushnumber(I(L), wide == 4 ? buf.f : buf.d); SINK();
         }
@@ -882,7 +893,8 @@ static int do_delimiter(parse_info *info, char fmt) {
 
     case '}':
         if (I(level) <= 0)
-            luaL_error(I(L), "unbalanced '}' in format near \"%s\"", I(fmt)-1);
+            luaL_error(I(L),
+                    "unbalanced '}' in format near \"%s\"", I(fmt)-1);
         I(index) = lua_tointeger(I(L), -3);
         I(level) -= 1;
         lua_remove(I(L), -3);
@@ -1046,7 +1058,8 @@ static int lbE_unpack(lua_State *L) {
     return do_pack(L, lb_checkbuffer(L, 1), 2, 0);
 }
 
-static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int *bigendian) {
+static size_t check_giargs(lua_State *L, int narg, size_t len,
+        size_t *wide, int *bigendian) {
     size_t pos = real_offset(luaL_optinteger(L, narg, 1), len);
     *wide = luaL_optinteger(L, narg+1, 4);
     if (*wide < 1 || *wide > 8)
@@ -1054,7 +1067,8 @@ static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int
     switch (*luaL_optlstring(L, narg+2, "bigendian", NULL)) {
     case 'b': case 'B': case '>': *bigendian = 1; break;
     case 'l': case 'L': case '<': *bigendian = 0; break;
-    default: luaL_argerror(L, 4, "only \"big\" or \"little\" endian support");
+    default: luaL_argerror(L, 4,
+                     "only \"big\" or \"little\" endian support");
     }
     return pos;
 }
