@@ -6,5 +6,6 @@
 *.exp
 *.exe
 *.lua
+*.html
 !test.lua
 tags
