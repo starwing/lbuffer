@@ -2,6 +2,7 @@
 #include "lbuffer.h"
 
 
+#include <stdarg.h>
 #include <ctype.h>
 #include <string.h>
 
@@ -502,6 +503,7 @@ typedef struct parse_info {
     unsigned int flags;
     int narg, nret;
     int level, index;
+    int fmtpos;
     const char *fmt;
 } parse_info;
 
@@ -654,6 +656,15 @@ static void sink(parse_info *info) {
 #define pack_checkstack(n) \
         luaL_checkstack(I(L), (n), "too much top level formats")
 
+static int fmterror(parse_info *info, const char *msgfmt, ...) {
+    const char *msg;
+    va_list list;
+    va_start(list, msgfmt);
+    msg = lua_pushvfstring(I(L), msgfmt, list);
+    va_end(list);
+    return luaL_argerror(I(L), I(fmtpos), msg);
+}
+
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     numcast_t buf;
     size_t pos;
@@ -736,8 +747,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     case 'd': case 'D': /* length preceded data */
     case 'p': case 'P': /* length preceded string */
         if (wide == 0) wide = 4;
-        if (wide > 8) luaL_error(I(L), "invalid wide of format '%c': "
-                "only 1 to 8 supported.", fmt);
+        if (wide > 8) fmterror(info,
+                "invalid wide of format '%c': only 1 to 8 supported.", fmt);
         BEGIN_PACK(0) {
             size_t len;
             const char *str = source_lstring(info, &len);
@@ -759,7 +770,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             if (wide <= 4)
                 len = buf.i32;
             else if ((len = (size_t)buf.i64) != buf.i64)
-                luaL_error(I(L), "string too big in format '%c'", fmt);
+                fmterror(info, "string too big in format '%c'", fmt);
             if ((fmt == 'd' || fmt == 'D') && I(pos) + wide + len > blen)
                 return 0;
             I(pos) += wide;
@@ -773,8 +784,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     case 'i': case 'I': /* int */
     case 'u': case 'U': /* unsigend int */
         if (wide == 0) wide = 4;
-        if (wide > 8) luaL_error(I(L), "invalid wide of format '%c': "
-                "only 1 to 8 supported.", fmt);
+        if (wide > 8) fmterror(info,
+                "invalid wide of format '%c': only 1 to 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
             if (wide <= 4)
                 buf.i32 = (int32_t)source_number(info);
@@ -807,9 +818,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
 
     case 'f': case 'F': /* float */
         if (wide == 0) wide = 4;
-        if (wide != 4 && wide != 8)
-            luaL_error(I(L), "invalid wide of format '%c': "
-                    "only 4 or 8 supported.", fmt);
+        if (wide != 4 && wide != 8) fmterror(info,
+                "invalid wide of format '%c': only 4 or 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
             buf.d = source_number(info);
             if (wide == 4) buf.f = (float)buf.d;
@@ -841,13 +851,13 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             pos = 0;
 check_seek:
         if (count < 0)
-            luaL_error(I(L), "invalid count for format '%c'", fmt);
+            fmterror(info, "invalid count of format '%c'", fmt);
         if (pos > I(b)->len) pos = I(b)->len;
         I(pos) = pos;
         break;
 
     default:
-        luaL_error(I(L), "invalid format '%c'", fmt);
+        fmterror(info, "invalid format '%c'", fmt);
         break;
     }
     return 1;
@@ -887,8 +897,7 @@ static int do_delimiter(parse_info *info, char fmt) {
 
     case '}':
         if (I(level) <= 0)
-            luaL_error(I(L),
-                    "unbalanced '}' in format near \"%s\"", I(fmt)-1);
+            fmterror(info, "unbalanced '}' in format near \"%s\"", I(fmt)-1);
         I(index) = lua_tointeger(I(L), -3);
         I(level) -= 1;
         lua_remove(I(L), -3);
@@ -909,7 +918,7 @@ static int do_delimiter(parse_info *info, char fmt) {
 
     case '#': /* current pos */
         if (I(level) != 0)
-            luaL_error(I(L), "can only retrieve position out of block");
+            fmterror(info, "can only retrieve position out of block");
         lua_pushinteger(I(L), I(pos) + 1);
         pack_checkstack(1);
         sink(info);
@@ -976,9 +985,9 @@ static void parse_stringkey(parse_info *info) {
             ++I(fmt);
             skip_white(I(fmt));
             if (*I(fmt) == '}' || *I(fmt) == '\0')
-                luaL_error(I(L), "key without format near \"%s\"", curpos);
+                fmterror(info, "key without format near \"%s\"", curpos);
             if (I(level) == 0)
-                luaL_error(I(L), "key at top level near \"%s\"", curpos);
+                fmterror(info, "key at top level near \"%s\"", curpos);
             lua_pushlstring(I(L), curpos, end - curpos);
             pif_set(info, PIF_STRINGKEY);
             return;
@@ -1016,7 +1025,7 @@ static int parse_fmt(parse_info *info) {
         }
     }
     if (I(level) != 0)
-        luaL_error(I(L), "unbalanced '{' in format");
+        fmterror(info, "unbalanced '{' in format");
     if (insert_pos) {
         lua_pushinteger(I(L), I(pos) + 1);
         lua_insert(I(L), -(++I(nret)));
@@ -1035,7 +1044,8 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
 #endif
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = real_offset(lua_tointeger(L, info.narg++), info.b->len);
-    info.fmt = lb_checklstring(L, info.narg++, NULL);
+    info.fmtpos = info.narg++;
+    info.fmt = lb_checklstring(L, info.fmtpos, NULL);
     parse_fmt(&info);
     if (pack) {
         lua_pushinteger(L, info.pos + 1);
