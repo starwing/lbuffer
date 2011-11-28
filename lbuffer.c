@@ -497,25 +497,26 @@ typedef union numcast_t {
 } numcast_t;
 
 typedef struct parse_info {
-    lua_State *L;
-    buffer *b;
-    size_t pos;
-    unsigned int flags;
-    int narg, nret;
-    int level, index;
-    int fmtpos;
-    const char *fmt;
+    lua_State *L; /* lua state */
+    buffer *b; /* working buffer */
+    size_t pos; /* current working position in buffer */
+    unsigned int flags; /* see PIF_* flags below */
+    int narg, nret; /* numbers of arguments/return values */
+    int level, index; /* the level and current index of nest table */
+    int base, fmtpos; /* the begining of arguments and the pos of fmt */
+    const char *fmt; /* the format string pointer */
 } parse_info;
 
-#define I(f) (info->f)
+#define I(field) (info->field)
 
+#define pif_test(i, flag)      (((i)->flags & (flag)) != 0)
+#define pif_clr(i, flag)       ((i)->flags &= ~(flag))
+#define pif_set(i, flag)       ((i)->flags |= (flag))
+
+/* flags */
 #define PIF_PACK         0x01
 #define PIF_BIGENDIAN    0x02
 #define PIF_STRINGKEY    0x04
-
-#define pif_test(i, f)      (((i)->flags & (f)) != 0)
-#define pif_clr(i, f)       ((i)->flags &= ~(f))
-#define pif_set(i, f)       ((i)->flags |= (f))
 
 
 #ifndef LB_ARTHBIT
@@ -619,11 +620,13 @@ static const char *source_lstring(parse_info *info, size_t *plen) {
     int narg = source(info);
     if (lb_isbufferorstring(I(L), narg))
         return lb_tolstring(I(L), narg, plen);
+    else if (I(level) == 0)
+        typeerror(I(L), I(base), I(narg)-1, "string");
     else {
         const char *msg = lua_pushfstring(I(L),
-                "buffer or string expected in table [%d], got %s",
+                "buffer or string expected in [%d], got %s",
                 I(index) - 1, luaL_typename(I(L), narg));
-        luaL_argerror(I(L), I(narg)-2, msg);
+        luaL_argerror(I(L), I(narg)-1 - I(base) + 1, msg);
     }
     return NULL;
 }
@@ -632,11 +635,13 @@ static lua_Number source_number(parse_info *info) {
     int narg = source(info);
     if (lua_isnumber(I(L), narg))
         return lua_tonumber(I(L), narg);
+    else if (I(level) == 0)
+        typeerror(I(L), I(base), I(narg)-1, "number");
     else {
         const char *msg = lua_pushfstring(I(L),
-                "number expected in table [%d], got %s",
+                "number expected in [%d], got %s",
                 I(index) - 1, luaL_typename(I(L), narg));
-        luaL_argerror(I(L), I(narg)-2, msg);
+        luaL_argerror(I(L), I(narg)-1 - I(base) + 1, msg);
     }
     return 0;
 }
@@ -662,7 +667,7 @@ static int fmterror(parse_info *info, const char *msgfmt, ...) {
     va_start(list, msgfmt);
     msg = lua_pushvfstring(I(L), msgfmt, list);
     va_end(list);
-    return luaL_argerror(I(L), I(fmtpos), msg);
+    return luaL_argerror(I(L), I(fmtpos) - I(base) + 1, msg);
 }
 
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
@@ -1033,10 +1038,11 @@ static int parse_fmt(parse_info *info) {
     return I(nret);
 }
 
-static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
+static int do_pack(lua_State *L, buffer *b, int base, int narg, int pack) {
     parse_info info = {NULL};
     info.L = L;
     info.b = b;
+    info.base = base;
     info.narg = narg;
     if (pack) pif_set(&info, PIF_PACK);
 #if CPU_BIG_ENDIAN
@@ -1058,15 +1064,17 @@ static int do_pack(lua_State *L, buffer *b, int narg, int pack) {
 
 static int lbE_pack(lua_State *L) {
     buffer *b;
+    int base = 1;
     if ((b = lb_tobuffer(L, 1)) == NULL) {
         b = lb_newbuffer(L);
         lua_insert(L, 1);
+        base = 2;
     }
-    return do_pack(L, b, 2, 1);
+    return do_pack(L, b, base, 2, 1);
 }
 
 static int lbE_unpack(lua_State *L) {
-    return do_pack(L, lb_checkbuffer(L, 1), 2, 0);
+    return do_pack(L, lb_checkbuffer(L, 1), 1, 2, 0);
 }
 
 static size_t check_giargs(lua_State *L, int narg, size_t len,
