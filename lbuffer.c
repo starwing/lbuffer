@@ -1074,6 +1074,14 @@ static int lbE_pack(lua_State *L) {
 }
 
 static int lbE_unpack(lua_State *L) {
+    if (lua_type(L, 1) == LUA_TSTRING) {
+        buffer b; /* a fake buffer */
+        lb_initbuffer(&b);
+        /* in unpack, all functions never changed the content of
+         * buffer, so use force cast is safe */
+        b.str = (char*)lua_tolstring(L, 1, &b.len);
+        return do_pack(L, &b, 1, 2, 0);
+    }
     return do_pack(L, lb_checkbuffer(L, 1), 1, 2, 0);
 }
 

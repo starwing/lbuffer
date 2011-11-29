@@ -331,6 +331,8 @@ function test_pack()
     local b, pos = buffer.pack("!>i8", 0x12345678)
     ok(pos == 9 and b :eq(string.char(0, 0, 0, 0, 0x12, 0x34, 0x56, 0x78)),
         "pack 64bit big endian number ("..b:tohex' '..")")
+    local a, b = buffer.unpack("abcdefgh", ">ii")
+    ok(a == 0x61626364 and b == 0x65666768, "unpack can work with lua string ("..("%08x, %08x"):format(a, b)..")")
 end
 
 test()
