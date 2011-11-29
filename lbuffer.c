@@ -47,8 +47,8 @@ static size_t real_offset(int offset, size_t len) {
 
 static size_t real_range(lua_State *L, int narg, size_t *plen) {
     if (lua_gettop(L) >= narg) {
-        size_t i = real_offset(luaL_optinteger(L, narg, 1), *plen);
-        size_t j = real_offset(luaL_optinteger(L, narg+1, -1), *plen);
+        size_t i = real_offset(luaL_optint(L, narg, 1), *plen);
+        size_t j = real_offset(luaL_optint(L, narg+1, -1), *plen);
         *plen = i <= j ? j - i + 1 : 0;
         return i;
     }
@@ -130,7 +130,7 @@ static int lbE_quote(lua_State *L) {
 
 static int lbE_topointer(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
-    size_t offset = real_offset(luaL_optinteger(L, 2, 1), b->len);
+    size_t offset = real_offset(luaL_optint(L, 2, 1), b->len);
     lua_pushlightuserdata(L, &b->str[offset]);
     return 1;
 }
@@ -184,7 +184,7 @@ static int auxipairs(lua_State *L) {
 
 static int lbE_ipairs(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
-    int pos = real_offset(luaL_optinteger(L, 2, 0), b->len);
+    int pos = real_offset(luaL_optint(L, 2, 0), b->len);
     lua_pushcfunction(L, auxipairs);
     lua_insert(L, 1);
     lua_pushinteger(L, pos);
@@ -272,13 +272,42 @@ static int lbE_char(lua_State *L) {
 /* buffer operations */
 
 enum cmd {
-    cmd_init,
     cmd_append,
     cmd_assign,
     cmd_insert,
     cmd_set,
     cmd_last
 };
+
+static int typeerror (lua_State *L, int base, int narg, const char *tname) {
+  const char *msg = lua_pushfstring(L, "%s expected, got %s",
+                                    tname, luaL_typename(L, narg));
+  return luaL_argerror(L, narg - base + 1, msg);
+}
+
+static lua_Integer optint_base(lua_State *L,
+        int base, int narg, lua_Integer def) {
+    if (lua_isnoneornil(L, narg))
+        return def;
+    else {
+        lua_Integer d = lua_tointeger(L, narg);
+        /* avoid extra test when d is not 0 */
+        if (d == 0 && !lua_isnumber(L, narg))
+            typeerror(L, base, narg, "number");
+        return d;
+    }
+}
+
+static size_t real_range_base(lua_State *L, int base, int narg,
+        size_t *plen) {
+    if (lua_gettop(L) >= narg) {
+        size_t i = real_offset(optint_base(L, base, narg, 1), *plen);
+        size_t j = real_offset(optint_base(L, base, narg+1, -1), *plen);
+        *plen = i <= j ? j - i + 1 : 0;
+        return i;
+    }
+    return 0;
+}
 
 static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c,
         int pos, int len) {
@@ -307,13 +336,7 @@ static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
     return (const char*)u;
 }
 
-static int typeerror (lua_State *L, int base, int narg, const char *tname) {
-  const char *msg = lua_pushfstring(L, "%s expected, got %s",
-                                    tname, luaL_typename(L, narg));
-  return luaL_argerror(L, narg - base + 1, msg);
-}
-
-static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
+static int do_cmd(lua_State *L, buffer *b, int base, int narg, enum cmd c) {
     int pos;
     switch (c) {
         case cmd_append:
@@ -324,11 +347,10 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
             pos = 0; break;
     }
 
-#define BASE (c != cmd_init ? 1 : 2)
     if (lb_isbufferorstring(L, narg)) {
         size_t len;
         const char *str = lb_tolstring(L, narg, &len);
-        size_t i = real_range(L, narg+1, &len);
+        size_t i = real_range_base(L, base, narg+1, &len);
         if (prepare_cmd(L, b, c, pos, len))
             memcpy(&b->str[pos], &str[i], len);
     }
@@ -338,9 +360,9 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
         const char *str = NULL;
         if (!lua_isnoneornil(L, narg+1)) {
             if ((str = lb_tolstring(L, narg+1, &len)) != NULL)
-                str += real_range(L, narg+2, &len);
+                str += real_range_base(L, base, narg+2, &len);
             else if ((str = udtolstring(L, narg+1, &len)) == NULL)
-                typeerror(L, BASE, narg+1, "string, buffer or userdata");
+                typeerror(L, base, narg+1, "string, buffer or userdata");
         }
         if (prepare_cmd(L, b, c, pos, fill_len))
             fill_str(b, pos, fill_len, str, len);
@@ -352,23 +374,22 @@ static int do_cmd(lua_State *L, buffer *b, int narg, enum cmd c) {
             memcpy(&b->str[pos], str, len);
     }
     else if (!lua_isnoneornil(L, narg))
-        typeerror(L, BASE, narg, "string, buffer, number or userdata");
+        typeerror(L, base, narg, "string, buffer, number or userdata");
     lua_settop(L, narg-1);
     return 1;
-#undef BASE
 }
 
 static int lbE_new(lua_State *L) {
     buffer *b = lb_newbuffer(L);
     lua_insert(L, 1);
-    return do_cmd(L, b, 2, cmd_init);
+    return do_cmd(L, b, 2, 2, cmd_assign);
 }
 
 #ifdef LB_SUBBUFFER
 static int lbE_sub(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
-    size_t begin = real_offset(luaL_optinteger(L, 2, 1), b->len);
-    int j = luaL_optinteger(L, 3, -1);
+    size_t begin = real_offset(luaL_optint(L, 2, 1), b->len);
+    int j = luaL_optint(L, 3, -1);
     size_t end = real_offset(j, b->len) + 1;
     if (j == 0 || end < begin)
         end = begin;
@@ -407,19 +428,19 @@ static int lbE_rep(lua_State *L) {
 }
 
 static int lbE_append(lua_State *L) {
-    return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_append);
+    return do_cmd(L, lb_checkbuffer(L, 1), 1, 2, cmd_append);
 }
 
 static int lbE_assign(lua_State *L) {
-    return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_assign);
+    return do_cmd(L, lb_checkbuffer(L, 1), 1, 2, cmd_assign);
 }
 
 static int lbE_insert(lua_State *L) {
-    return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_insert);
+    return do_cmd(L, lb_checkbuffer(L, 1), 1, 2, cmd_insert);
 }
 
 static int lbE_set(lua_State *L) {
-    return do_cmd(L, lb_checkbuffer(L, 1), 2, cmd_set);
+    return do_cmd(L, lb_checkbuffer(L, 1), 1, 2, cmd_set);
 }
 
 static int lbE_clear(lua_State *L) {
@@ -1087,8 +1108,8 @@ static int lbE_unpack(lua_State *L) {
 
 static size_t check_giargs(lua_State *L, int narg, size_t len,
         size_t *wide, int *bigendian) {
-    size_t pos = real_offset(luaL_optinteger(L, narg, 1), len);
-    *wide = luaL_optinteger(L, narg+1, 4);
+    size_t pos = real_offset(luaL_optint(L, narg, 1), len);
+    *wide = luaL_optint(L, narg+1, 4);
     if (*wide < 1 || *wide > 8)
         luaL_argerror(L, 3, "only 1 to 8 wide support");
     switch (*luaL_optlstring(L, narg+2, "bigendian", NULL)) {
@@ -1238,7 +1259,7 @@ static int lbM_newindex(lua_State *L) {
 static int lbM_call(lua_State *L) {
     buffer *b = lb_newbuffer(L);
     lua_replace(L, 1);
-    return do_cmd(L, b, 2, cmd_init);
+    return do_cmd(L, b, 2, 2, cmd_assign);
 }
 
 /* module registration */
