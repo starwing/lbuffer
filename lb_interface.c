@@ -293,40 +293,50 @@ static int typeerror (lua_State *L, int narg, const char *tname) {
   return luaL_argerror(L, narg, msg);
 }
 
+static const char *tolstring(lua_State *L, buffer *b, size_t *plen) {
+    if (plen != NULL)
+        *plen = (b == NULL ? 0 : b->len);
+    if (b == NULL) return NULL;
+    /* never return NULL with a valid buffer,
+     * even if b->str is NULL. */
+    return b->str != NULL ? b->str : "";
+}
+
+const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
+    const char *str = lua_tolstring(L, narg, plen);
+    if (str != NULL) return str;
+    return tolstring(L, lb_tobuffer(L, narg), plen);
+}
+
 const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
     if (lua_type(L, narg) == LUA_TSTRING)
         return lua_tolstring(L, narg, plen);
     else {
         buffer *b = lb_tobuffer(L, narg);
         if (b != NULL)
-            return lb_tolstring(L, narg, plen);
+            return tolstring(L, b, plen);
         typeerror(L, narg, "buffer or string");
         return NULL; /* avoid warning */
     }
 }
 
 const char *lb_optlstring(lua_State *L, int narg, const char *def, size_t *plen) {
-    buffer *b = lb_tobuffer(L, narg);
-    if (b != NULL)
-        return lb_tolstring(L, narg, plen);
-    if (lua_isstring(L, narg))
+    if (lua_type(L, narg) == LUA_TSTRING)
         return lua_tolstring(L, narg, plen);
-    if (plen != NULL) *plen = def ? strlen(def) : 0;
-    return def; /* avoid warning */
-}
-
-const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
-    const char *str = lua_tolstring(L, narg, plen);
-    if (str != NULL) return str;
-    else {
-        buffer *b = lb_tobuffer(L, narg);
-        if (plen != NULL)
-            *plen = (b == NULL ? 0 : b->len);
-        if (b == NULL) return NULL;
-        /* never return NULL with a valid buffer,
-         * even if b->str is NULL. */
-        return b->str != NULL ? b->str : "";
+    else if (lb_isbuffer(L, narg)) {
+        buffer *b = (buffer*)lua_touserdata(L, narg);
+#ifdef LB_SUBBUFFER
+        if (lb_isinvalidsub(b))
+            luaL_error(L, "invalid subbuffer (%p)", b);
+#endif
+        return tolstring(L, b, plen);
     }
+    else if (lua_isnoneornil(L, narg)) {
+        if (plen != NULL) *plen = def ? strlen(def) : 0;
+        return def;
+    }
+    typeerror(L, narg, "buffer or string");
+    return NULL; /* avoid warning */
 }
 
 /*

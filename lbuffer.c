@@ -1286,7 +1286,7 @@ static const luaL_Reg mt[] = {
     { NULL,        NULL          },
 };
 
-LUALIB_API int luaopen_buffer(lua_State *L) {
+int luaopen_buffer(lua_State *L) {
 #if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs); /* 1 */
 #else

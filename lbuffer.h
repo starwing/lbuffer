@@ -10,6 +10,7 @@
 #define LB_VERSION "0.1"
 #define LB_STRUCT_HEADER size_t len; char *str
 
+#define LB_API LUA_API
 
 #ifdef LB_SUBBUFFER
 #define LB_SBPTR_BOX            "subbuffer-ptrbox"
@@ -40,28 +41,29 @@ typedef struct buffer {
 #  define lb_isinvalidsub(b)    (((subbuffer*)(b))->subtype == LB_INVALID_SUB)
 #endif /* LB_SUBBUFFER */
 
-buffer     *lb_initbuffer   (buffer *b);
-buffer     *lb_newbuffer    (lua_State *L);
-buffer     *lb_copybuffer   (lua_State *L, buffer *b);
-char       *lb_realloc      (lua_State *L, buffer *b, size_t len);
-int         lb_isbuffer     (lua_State *L, int narg);
-buffer     *lb_tobuffer     (lua_State *L, int narg);
 
-int         lb_isbufferorstring(lua_State *L, int narg);
-buffer     *lb_pushbuffer   (lua_State *L, const char *str, size_t len);
-const char *lb_pushlstring  (lua_State *L, const char *str, size_t len);
-const char *lb_tolstring    (lua_State *L, int narg, size_t *plen);
-const char *lb_checklstring (lua_State *L, int narg, size_t *plen);
-const char *lb_optlstring   (lua_State *L, int narg, const char *def, size_t *plen);
+LB_API buffer  *lb_initbuffer   (buffer *b);
+LB_API buffer  *lb_newbuffer    (lua_State *L);
+LB_API buffer  *lb_copybuffer   (lua_State *L, buffer *b);
+LB_API char    *lb_realloc      (lua_State *L, buffer *b, size_t len);
+LB_API int      lb_isbuffer     (lua_State *L, int narg);
+LB_API buffer  *lb_tobuffer     (lua_State *L, int narg);
+                   
+LB_API buffer      *lb_pushbuffer   (lua_State *L, const char *str, size_t len);
+LB_API const char  *lb_pushlstring  (lua_State *L, const char *str, size_t len);
+LB_API int          lb_isbufferorstring(lua_State *L, int narg);
+LB_API const char  *lb_tolstring    (lua_State *L, int narg, size_t *plen);
+LB_API const char  *lb_checklstring (lua_State *L, int narg, size_t *plen);
+LB_API const char  *lb_optlstring   (lua_State *L, int narg, const char *def, size_t *plen);
 
-LUALIB_API int luaopen_buffer(lua_State *L);
+LUALIB_API int      luaopen_buffer(lua_State *L);
 
 #ifdef LB_SUBBUFFER
-#undef      lb_checkbuffer
-buffer     *lb_checkbuffer  (lua_State *L, int narg);
-buffer     *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end);
-subbuffer  *lb_initsubbuffer(subbuffer *b);
-void        lb_removesubbuffer (subbuffer *b);
+#undef              lb_checkbuffer
+LB_API buffer      *lb_checkbuffer  (lua_State *L, int narg);
+LB_API buffer      *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end);
+LB_API subbuffer   *lb_initsubbuffer(subbuffer *b);
+LB_API void         lb_removesubbuffer (subbuffer *b);
 #endif /* LB_SUBBUFFER */
 
 #ifdef LB_REPLACE_LUA_API
