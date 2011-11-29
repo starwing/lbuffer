@@ -3,16 +3,17 @@
 
 lbuffer is a C module for lua, it provides mutable string feature to
 lua language[1]. it has all routines from lua's string module, except
-pattern match, reverse and byte-code dump. and add several modify
-functions. it provides:
+pattern match and byte-code dump. and add several modify functions. it
+provides:
     * change the value of buffer without copy it.
     * a pair of full feature pack/unpack functions.
-    * get a subbuffer from the origial buffer, and the changes to
-      subbufer will affects origial buffer.
+    * get a subbuffer from the original buffer, and the changes to
+      subbufer will affects the original buffer.
 
 and you can add lbuffer.h and recompile the other C module to get full
 lbuffer compatible with other lua module. just add:
--DLB_OVERLOAD_LUA_API -include lbuffer.h
+
+    -DLB_REPLACE_LUA_API -include lbuffer.h
 
 when you compile other Lua C modules (using gcc). e.g. if you compile
 a lbuffer compatible md5[2] module, you can use them together like

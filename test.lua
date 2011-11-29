@@ -30,6 +30,7 @@ function test()
     test_new()
     test_map()
     test_rep()
+    test_reverse()
     test_alloc()
     test_sub()
     test_modify()
@@ -112,6 +113,16 @@ function test_mt()
         c = c + 1
     end
     ok(c == 10 and bb:eq(b), "ipairs operation ("..bb..")")
+end
+
+function test_reverse()
+    test_msg "test reverse operation"
+    local b = buffer "apple-pie"
+    ok(b:reverse() :eq "eip-elppa", "reversed whole buffer ("..b..")")
+    ok(b:reverse(2, 2) :eq "eip-elppa", "reversed a single byte ("..b..")")
+    ok(b:reverse(2, -2) :eq "epple-pia", "reversed a range ("..b..")")
+    local b = ("A man, a plan, a Canal - Panama!"):lower():gsub("%W", "")
+    ok(buffer(b):reverse():eq(b), "test a plalindrome ("..b..")")
 end
 
 function test_rep()

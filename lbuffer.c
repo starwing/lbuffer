@@ -427,6 +427,19 @@ static int lbE_rep(lua_State *L) {
     return 1;
 }
 
+static int lbE_reverse(lua_State *L) {
+    buffer *b = lb_checkbuffer(L, 1);
+    size_t len = b->len, pos = real_range(L, 2, &len);
+    char *p = &b->str[pos], *e = &b->str[pos+len-1];
+    for (; p < e; ++p, --e) {
+        char ch = *p;
+        *p = *e;
+        *e = ch;
+    }
+    lua_settop(L, 1);
+    return 1;
+}
+
 static int lbE_append(lua_State *L) {
     return do_cmd(L, lb_checkbuffer(L, 1), 1, 2, cmd_append);
 }
@@ -1277,6 +1290,7 @@ static const luaL_Reg funcs[] = {
     { "lower",     lbE_lower     },
     { "upper",     lbE_upper     },
     { "rep",       lbE_rep       },
+    { "reverse",   lbE_reverse   },
     { "len",       lbE_len       },
     { "alloc",     lbE_alloc     },
     { "free",      lbE_free      },
