@@ -125,6 +125,29 @@ examples: ::
 .. _string: http://www.lua.org/manual/5.1/manual.html#5.4
 
 
+if you define ``LB_SUBBUFFER`` flags when compile lbuffer, the
+subbuffer feature would enable. then you can use ``buffer.sub`` to get
+a reference to original buffer, if you modify the reference buffer,
+the original buffer will be modified as well. you can only have
+``buffer._SUBS_MAX`` subbuffer at the moment, this value can be
+modified by define a macro named ``LB_SUBS_MAX``, the default value is
+4.
+
+this is a example using subbuffer feature: ::
+
+    $ lua -lbuffer
+    Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio
+    > b = buffer"apple"
+    > sb = b:sub(5,5)
+    > =sb:assign "pie"
+    pie
+    > sb2 = b:sub(5,4)
+    > =sb2:assign "-"
+    -
+    > =b
+    appl-pie
+    >
+
 and, beside all, buffer module has a pair of full featured pack/unpack
 functions. it can be used extract struct from binary text to lua, this
 a example to read ``*.mo`` file created from ``*.po`` file, using
