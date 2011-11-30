@@ -40,27 +40,27 @@ and in Windows using MinGW, just: ::
 
     gcc -mdll -DLUA_BUILD_AS_DLL -I/path/to/lua/include *.c /path/to/lua51.dll -o buffer.dll
 
-and in Windows using MSVC, just create a Win32/DLL Project, and add
-all .c and .h files to project, set output name to buffer.dll and
-compile it.
+and in Windows using ``MSVC``, just create a Win32/DLL Project, and
+add all .c and .h files to project, set output name to ``buffer.dll``
+and compile it.
 
 if you want subbuffer feature, you need define a macro named
-LB_SUBBUFFER, because subbuffer will slow the memory realloc function
-in *all* buffers.
+``LB_SUBBUFFER``, because subbuffer will slow the memory realloc
+function in **all** buffers.
 
-there are two method to do pack/unpack operations. defaultly we read
-soem bits to a buffer, and cast it to int, and do bit swap. but you
-can also choose bit-op ways to extract binary numbers in file, this
-can be used in machines that has any number of bit in a byte, but this
-may somehow slow a bit. define LB_ARTHBIT to enable this.
+there are two method to do ``pack``/``unpack`` operations. defaultly
+we read soem bits to a buffer, and cast it to int, and do bit swap.
+but you can also choose bit-op ways to extract binary numbers in file,
+this can be used in machines that has any number of bit in a byte, but
+this may somehow slow a bit. define ``LB_ARTHBIT`` to enable this.
 
 example
 =======
 
 there are some examples, and main usage please see test.lua.
 
-first, you can use buffer just like using a normal string, you can
-call string functions on it, but the functions are in buffer module of
+first, you can use lbuffer just like using a normal string, you can
+call string functions on it, but the functions are in lbuffer module of
 course: ::
 
         local B = require 'buffer'
@@ -80,7 +80,7 @@ instead, it changes the content of operated buffer. so the output of
 the last line is ``OLLEH``, but not ``olleh``.
 
 beside the normal functions inherit from the standard string_ module,
-there are also many functions that only in buffer module, see
+there are also many functions that only in lbuffer module, see
 reference_ of buffer to know these special functions, there are some
 examples: ::
     
@@ -127,7 +127,9 @@ examples: ::
 
 
 and, beside all, buffer module has a pair of full featured pack/unpack
-functions. it can be used extract struct from binary text to lua: ::
+functions. it can be used extract struct from binary text to lua, this
+a example to read ``*.mo`` file created from ``*.po`` file, using
+msgfmt: ::
 
     -- read *.mo file
     function read_mofile(b)
@@ -152,10 +154,13 @@ functions. it can be used extract struct from binary text to lua: ::
         return info, trans
     end
 
-for details, see reference of buffer module below.
+for details, see reference of lbuffer below.
 
 
 reference
 =========
 
 .. _reference:
+
+C module developer note
+=======================
