@@ -39,6 +39,7 @@ typedef struct subbuffer {
     LB_STRUCT_HEADER;
     int subtype;
     struct buffer *parent;
+    struct subbuffer *subparent;
 } subbuffer;
 #endif /* LB_SUBBUFFER */
 

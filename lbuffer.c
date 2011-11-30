@@ -410,6 +410,20 @@ static int lbE_subcount(lua_State *L) {
         lua_pushnil(L);
     return 1;
 }
+
+static int lbE_offset(lua_State *L) {
+    buffer *b = lb_tobuffer(L, 1);
+    if (b->subcount >= 0)
+        return 0;
+    else {
+        subbuffer *sb = (subbuffer*)b;
+        buffer *parent = sb->parent;
+        int pos = sb->str - parent->str + 1;
+        lua_pushinteger(L, pos);
+        lua_pushinteger(L, pos + sb->len - 1);
+        return 2;
+    }
+}
 #endif
 
 static int lbE_rep(lua_State *L) {
@@ -1369,6 +1383,7 @@ static const luaL_Reg funcs[] = {
     { "unpack",    lbE_unpack    },
 #ifdef LB_SUBBUFFER
     { "sub",       lbE_sub       },
+    { "offset",    lbE_offset    },
     { "subcount",  lbE_subcount  },
 #endif
     { NULL,        NULL          },

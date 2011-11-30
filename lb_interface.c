@@ -28,6 +28,7 @@ subbuffer *lb_initsubbuffer(subbuffer *b) {
     b->len = 0;
     b->subtype = LB_INVALID_SUB;
     b->parent = NULL;
+    b->subparent = NULL;
     return b;
 }
 
@@ -64,7 +65,7 @@ static subbuffer *retrieve_subbuffer(lua_State *L, subbuffer *sb) {
 }
 
 buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
-    subbuffer *sb;
+    subbuffer *sb, *subparent = NULL;
     int i;
     char *str;
     size_t len;
@@ -73,8 +74,10 @@ buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
     str = &b->str[begin];
     len = begin < end ? end - begin : 0;
 
-    if (lb_issubbuffer(b))
+    if (lb_issubbuffer(b)) {
+        subparent = (subbuffer*)b;
         b = ((subbuffer*)b)->parent;
+    }
     for (i = 0; i < b->subcount; ++i) {
         if (b->subs[i]->str == str
                 && b->subs[i]->len == len
@@ -93,6 +96,7 @@ buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
     sb->str = str;
     sb->len = len;
     sb->parent = b;
+    sb->subparent = subparent;
     sb->subtype = LB_SUB;
 
     register_subbuffer(L, sb);
@@ -129,6 +133,9 @@ static char *realloc_subbuffer(lua_State *L, subbuffer *sb, size_t len) {
 #define MAINTAIN_SUBBUFFER() do { \
     size_t sb_oldend = begin + sb->len; \
     size_t sb_newend = begin + len; \
+    subbuffer *sp; \
+    for (sp = sb->subparent; sp != NULL; sp = sp->subparent)\
+        sp->len += dlen; \
     sb->len = len; \
     memmove(&pb->str[sb_newend], &pb->str[sb_oldend], \
             pb_oldlen - sb_oldend); } while (0)
