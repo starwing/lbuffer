@@ -11,8 +11,8 @@ functions. it provides:
     * get a subbuffer from the original buffer, and the changes to
       subbufer will affects the original buffer.
 
-and you can add lbuffer.h and recompile the other C module to get full
-lbuffer compatible with other lua module. just add: ::
+and you can add ``lbuffer.h`` and recompile the other C module to get
+full lbuffer compatible with other lua module. just add: ::
 
     -DLB_REPLACE_LUA_API -include lbuffer.h
 
