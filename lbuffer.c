@@ -338,6 +338,7 @@ static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
 
 static int do_cmd(lua_State *L, buffer *b, int base, int narg, enum cmd c) {
     int pos;
+    int orig_narg = narg;
     switch (c) {
         case cmd_append:
             pos = b->len; break;
@@ -375,7 +376,7 @@ static int do_cmd(lua_State *L, buffer *b, int base, int narg, enum cmd c) {
     }
     else if (!lua_isnoneornil(L, narg))
         typeerror(L, base, narg, "string, buffer, number or userdata");
-    lua_settop(L, narg-1);
+    lua_settop(L, orig_narg - 1);
     return 1;
 }
 
@@ -1278,42 +1279,50 @@ static int lbM_call(lua_State *L) {
 /* module registration */
 
 static const luaL_Reg funcs[] = {
-    { "isbuffer",  lbE_isbuffer  },
-    { "new",       lbE_new       },
-    { "tostring",  lbE_tostring  },
-    { "tohex",     lbE_tohex     },
-    { "quote",     lbE_quote     },
-    { "topointer", lbE_topointer },
-    { "ipairs",    lbE_ipairs    },
-    { "cmp",       lbE_cmp       },
-    { "eq",        lbE_eq        },
+    { "byte",      lbE_byte      },
+    { "char",      lbE_char      },
+    /* dump */
+    /* find */
+    /* format */
+    /* gmatch */
+    /* gsub */
+    { "len",       lbE_len       },
     { "lower",     lbE_lower     },
-    { "upper",     lbE_upper     },
+    /* match */
     { "rep",       lbE_rep       },
     { "reverse",   lbE_reverse   },
-    { "len",       lbE_len       },
+    /* sub */
+    { "upper",     lbE_upper     },
+
     { "alloc",     lbE_alloc     },
+    { "append",    lbE_append    },
+    { "assign",    lbE_assign    },
+    { "clear",     lbE_clear     },
+    { "cmp",       lbE_cmp       },
+    { "copy",      lbE_copy      },
+    { "eq",        lbE_eq        },
     { "free",      lbE_free      },
+    { "getint",    lbE_getint    },
+    { "getuint",   lbE_getuint   },
+    { "insert",    lbE_insert    },
+    { "ipairs",    lbE_ipairs    },
+    { "isbuffer",  lbE_isbuffer  },
+    { "move",      lbE_move      },
+    { "new",       lbE_new       },
+    { "pack",      lbE_pack      },
+    { "quote",     lbE_quote     },
+    { "remove",    lbE_remove    },
+    { "set",       lbE_set       },
+    { "setint",    lbE_setuint   },
+    { "setuint",   lbE_setuint   },
+    { "tohex",     lbE_tohex     },
+    { "topointer", lbE_topointer },
+    { "tostring",  lbE_tostring  },
+    { "unpack",    lbE_unpack    },
 #ifdef LB_SUBBUFFER
     { "sub",       lbE_sub       },
     { "subcount",  lbE_subcount  },
 #endif
-    { "append",    lbE_append    },
-    { "assign",    lbE_assign    },
-    { "insert",    lbE_insert    },
-    { "set",       lbE_set       },
-    { "byte",      lbE_byte      },
-    { "char",      lbE_char      },
-    { "clear",     lbE_clear     },
-    { "copy",      lbE_copy      },
-    { "move",      lbE_move      },
-    { "remove",    lbE_remove    },
-    { "getint",    lbE_getint    },
-    { "setint",    lbE_setuint   },
-    { "getuint",   lbE_getuint   },
-    { "setuint",   lbE_setuint   },
-    { "pack",      lbE_pack      },
-    { "unpack",    lbE_unpack    },
     { NULL,        NULL          },
 };
 
@@ -1324,8 +1333,10 @@ static const luaL_Reg mt[] = {
     { "__index",   lbM_index     },
     { "__newindex",lbM_newindex  },
     { "__gc",      lbM_gc        },
+#if LUA_VERSION_NUM >= 502
     { "__ipairs",  lbE_ipairs    },
     { "__pairs",   lbE_ipairs    },
+#endif
     { NULL,        NULL          },
 };
 
@@ -1351,15 +1362,11 @@ int luaopen_buffer(lua_State *L) {
 
     /* create metatable */
     if (luaL_newmetatable(L, LB_LIBNAME)) { /* 2 */
-#if LUA_VERSION_NUM >= 502
         lua_pushvalue(L, -2); /* (1)->3 */
+#if LUA_VERSION_NUM >= 502
         luaL_setfuncs(L, mt, 1);
 #else
-        luaL_register(L, NULL, mt);
-        lua_pushliteral(L, "__index"); /* 3 */
-        lua_pushvalue(L, -3); /* 4 */
-        lua_pushcclosure(L, lbM_index, 1); /* 4->4 */
-        lua_rawset(L, -3); /* 3,4->2 */
+        luaI_openlib(L, NULL, mt, 1);
 #endif
     }
     lua_pop(L, 1); /* pop 2 */
