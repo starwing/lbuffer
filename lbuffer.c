@@ -1276,24 +1276,63 @@ static int lbM_call(lua_State *L) {
     return do_cmd(L, b, 2, 2, cmd_assign);
 }
 
+static int redir_to_strlib(lua_State *L, const char *name) {
+    buffer *b = lb_tobuffer(L, 1);
+    int i, base = 1, top = lua_gettop(L);
+    if (b != NULL) {
+        lua_pushlstring(L, b->str != NULL ? b->str : "", b->len);
+        lua_insert(L, 2);
+        base += 1;
+        top += 1;
+    }
+    for (i = base; i <= top; ++i) {
+        buffer *b = lb_tobuffer(L, i);
+        if (b != NULL) {
+            lua_pushlstring(L, b->str != NULL ? b->str : "", b->len);
+            lua_replace(L, i);
+        }
+    }
+    lua_getglobal(L, "string");
+    lua_getfield(L, -1, name);
+    lua_remove(L, -2);
+    lua_insert(L, base);
+    lua_call(L, top - base + 1, LUA_MULTRET);
+    if (lua_isstring(L, 2) && b != NULL) {
+        size_t len;
+        const char *str = lua_tolstring(L, 2, &len);
+        lb_setbuffer(L, 1, str, len);
+        lua_remove(L, 2);
+    }
+    return lua_gettop(L);
+}
+
+#define redir_function(name) \
+    static int lbR_##name (lua_State *L) \
+    { return redir_to_strlib(L, #name); }
+redir_function(dump)
+redir_function(find)
+redir_function(format)
+redir_function(gmatch)
+redir_function(gsub)
+redir_function(match)
+#undef redir_function
+
 /* module registration */
 
 static const luaL_Reg funcs[] = {
     { "byte",      lbE_byte      },
     { "char",      lbE_char      },
-    /* dump */
-    /* find */
-    /* format */
-    /* gmatch */
-    /* gsub */
+    { "dump",      lbR_dump      },
+    { "find",      lbR_find      },
+    { "format",    lbR_format    },
+    { "gmatch",    lbR_gmatch    },
+    { "gsub",      lbR_gsub      },
     { "len",       lbE_len       },
     { "lower",     lbE_lower     },
-    /* match */
+    { "match",     lbR_match     },
     { "rep",       lbE_rep       },
     { "reverse",   lbE_reverse   },
-    /* sub */
     { "upper",     lbE_upper     },
-
     { "alloc",     lbE_alloc     },
     { "append",    lbE_append    },
     { "assign",    lbE_assign    },

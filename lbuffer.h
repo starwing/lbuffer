@@ -50,6 +50,7 @@ LB_API int      lb_isbuffer     (lua_State *L, int narg);
 LB_API buffer  *lb_tobuffer     (lua_State *L, int narg);
                    
 LB_API buffer      *lb_pushbuffer   (lua_State *L, const char *str, size_t len);
+LB_API const char  *lb_setbuffer    (lua_State *L, int narg, const char *str, size_t len);
 LB_API const char  *lb_pushlstring  (lua_State *L, const char *str, size_t len);
 LB_API int          lb_isbufferorstring(lua_State *L, int narg);
 LB_API const char  *lb_tolstring    (lua_State *L, int narg, size_t *plen);

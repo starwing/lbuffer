@@ -277,6 +277,13 @@ buffer *lb_pushbuffer(lua_State *L, const char *str, size_t len) {
     return b;
 }
 
+const char *lb_setbuffer(lua_State *L, int narg, const char *str, size_t len) {
+    buffer *b = lb_tobuffer(L, narg);
+    if (b != NULL && lb_realloc(L, b, len))
+        memcpy(b->str, str, len);
+    return b->str;
+}
+
 /* compatible with lua api */
 
 int lb_isbufferorstring(lua_State *L, int narg) {

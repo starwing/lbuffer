@@ -2,9 +2,8 @@ lbuffer - a mutable string support to lua
 =========================================
 
 lbuffer is a C module for lua, it provides mutable string feature to
-the lua_ language. it has all routines from lua's string module,
-except pattern match and byte-code dump. and add several modify
-functions. it provides:
+the lua_ language. it has all routines from lua's string module, add
+several modify functions. it provides:
 
     * change the value of buffer without copy it.
     * a pair of full feature pack/unpack functions.
