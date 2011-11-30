@@ -137,15 +137,15 @@ this is a example using subbuffer feature: ::
 
     $ lua -lbuffer
     Lua 5.1.4  Copyright (C) 1994-2008 Lua.org, PUC-Rio
-    > b = buffer"apple"
+    > b = buffer "apply"
     > sb = b:sub(5,5)
-    > =sb:assign "pie"
-    pie
-    > sb2 = b:sub(5,4)
+    > =sb:assign "epie"
+    epie
+    > sb2 = sb:sub(2,1)
     > =sb2:assign "-"
     -
     > =b
-    appl-pie
+    apple-pie
     >
 
 and, beside all, buffer module has a pair of full featured pack/unpack

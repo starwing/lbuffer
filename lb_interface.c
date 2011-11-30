@@ -73,6 +73,8 @@ buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
     str = &b->str[begin];
     len = begin < end ? end - begin : 0;
 
+    if (lb_issubbuffer(b))
+        b = ((subbuffer*)b)->parent;
     for (i = 0; i < b->subcount; ++i) {
         if (b->subs[i]->str == str
                 && b->subs[i]->len == len
