@@ -937,7 +937,7 @@ static int do_delimiter(parse_info *info, char fmt) {
 
     case '}':
         if (I(level) <= 0)
-            fmterror(info, "unbalanced '}' in format near \"%s\"", I(fmt)-1);
+            fmterror(info, "unbalanced '}' in format near "LUA_QS, I(fmt)-1);
         I(index) = lua_tointeger(I(L), -3);
         I(level) -= 1;
         lua_remove(I(L), -3);
@@ -1025,9 +1025,9 @@ static void parse_stringkey(parse_info *info) {
             ++I(fmt);
             skip_white(I(fmt));
             if (*I(fmt) == '}' || *I(fmt) == '\0')
-                fmterror(info, "key without format near \"%s\"", curpos);
+                fmterror(info, "key without format near "LUA_QS, curpos);
             if (I(level) == 0)
-                fmterror(info, "key at top level near \"%s\"", curpos);
+                fmterror(info, "key at top level near "LUA_QS, curpos);
             lua_pushlstring(I(L), curpos, end - curpos);
             pif_set(info, PIF_STRINGKEY);
             return;
@@ -1276,6 +1276,7 @@ static int lbM_call(lua_State *L) {
     return do_cmd(L, b, 2, 2, cmd_assign);
 }
 
+#ifdef LB_REDIR_STRLIB
 static int redir_to_strlib(lua_State *L, const char *name) {
     buffer *b = lb_tobuffer(L, 1);
     int i, base = 1, top = lua_gettop(L);
@@ -1295,6 +1296,9 @@ static int redir_to_strlib(lua_State *L, const char *name) {
     lua_getglobal(L, "string");
     lua_getfield(L, -1, name);
     lua_remove(L, -2);
+    if (lua_isnil(L, -1))
+        return luaL_error(L, "can not find function "LUA_QS" in "LUA_QS,
+                name, "string");
     lua_insert(L, base);
     lua_call(L, top - base + 1, LUA_MULTRET);
     if (lua_isstring(L, 2) && b != NULL) {
@@ -1316,20 +1320,25 @@ redir_function(gmatch)
 redir_function(gsub)
 redir_function(match)
 #undef redir_function
+#endif
 
 /* module registration */
 
 static const luaL_Reg funcs[] = {
     { "byte",      lbE_byte      },
     { "char",      lbE_char      },
+#ifdef LB_REDIR_STRLIB
     { "dump",      lbR_dump      },
     { "find",      lbR_find      },
     { "format",    lbR_format    },
     { "gmatch",    lbR_gmatch    },
     { "gsub",      lbR_gsub      },
+#endif
     { "len",       lbE_len       },
     { "lower",     lbE_lower     },
+#ifdef LB_REDIR_STRLIB
     { "match",     lbR_match     },
+#endif
     { "rep",       lbE_rep       },
     { "reverse",   lbE_reverse   },
     { "upper",     lbE_upper     },
@@ -1415,6 +1424,7 @@ int luaopen_buffer(lua_State *L) {
 
 /*
  * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
- * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
+ * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1'
+ * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */

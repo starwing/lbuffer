@@ -12,6 +12,20 @@
 
 #define LB_API LUA_API
 
+#if !defined(LB_SUBBUFFER) || LB_SUBBUFFER
+#  undef  LB_SUBBUFFER
+#  define LB_SUBBUFFER
+#else
+#  undef LB_SUBBUFFER
+#endif
+
+#if !defined(LB_REDIR_STRLIB) || LB_REDIR_STRLIB
+#  undef  LB_REDIR_STRLIB
+#  define LB_REDIR_STRLIB
+#else
+#  undef LB_REDIR_STRLIB
+#endif
+
 #ifdef LB_SUBBUFFER
 #define LB_SBPTR_BOX            "subbuffer-ptrbox"
 #define LB_SUB                 -1
