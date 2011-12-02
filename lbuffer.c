@@ -58,36 +58,22 @@ static size_t real_range(lua_State *L, int narg, size_t *plen) {
 /* buffer information */
 
 static int lbE_isbuffer(lua_State *L) {
-#ifdef LB_SUBBUFFER
     buffer *b;
-    return lb_isbuffer(L, 1)
-        && (b = (buffer*)lua_touserdata(L, 1)) != NULL
+    return (b = lb_rawtestbuffer(L, 1)) != NULL
         && !lb_isinvalidsub(b);
-#else
-    return lb_isbuffer(L, 1);
-#endif
 }
 
 static int lbE_tostring(lua_State *L) {
-#ifdef LB_SUBBUFFER
-    buffer *b = NULL;
-    if (lb_isbuffer(L, 1)) {
-        if ((b = (buffer*)lua_touserdata(L, 1)) != NULL
-                && lb_isinvalidsub(b)) {
-            lua_pushfstring(L, "(invalid subbuffer): %p", b);
-            return 1;
-        }
-    }
-#else
-    buffer *b = lb_tobuffer(L, 1);
-#endif
-    if (b != NULL)
-        lua_pushlstring(L, b->str, b->len);
-    else {
+    buffer *b;
+    if ((b = lb_rawtestbuffer(L, 1)) == NULL) {
         size_t len;
         const char *str = lua_tolstring(L, 1, &len);
         lua_pushlstring(L, str, len);
     }
+    else if (lb_isinvalidsub(b))
+        lua_pushfstring(L, "(invalid subbuffer): %p", b);
+    else
+        lua_pushlstring(L, b->str, b->len);
     return 1;
 }
 
@@ -248,7 +234,7 @@ static int lbE_char(lua_State *L) {
     buffer *b = NULL;
     int invalid = 0;
     int i, n = lua_gettop(L);
-    if ((b = lb_tobuffer(L, 1)) == NULL) {
+    if ((b = lb_testbuffer(L, 1)) == NULL) {
         b = lb_newbuffer(L);
         lua_insert(L, 1);
         n += 1;
@@ -399,20 +385,22 @@ static int lbE_sub(lua_State *L) {
 }
 
 static int lbE_subcount(lua_State *L) {
-    buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
-    if (b->subcount >= 0)
-        lua_pushinteger(L, b->subcount);
-    else if (b->subcount == LB_INVALID_SUB)
+    buffer *b = lb_rawtestbuffer(L, 1);
+    if (b == NULL)
+        return typeerror(L, 1, 1, lb_libname);
+    if (lb_isinvalidsub(b))
         lua_pushliteral(L, "invalid");
     else if (b->subcount == LB_SUB)
         lua_pushliteral(L, "sub");
+    else if (b->subcount >= 0)
+        lua_pushinteger(L, b->subcount);
     else
         lua_pushnil(L);
     return 1;
 }
 
 static int lbE_offset(lua_State *L) {
-    buffer *b = lb_tobuffer(L, 1);
+    buffer *b = lb_checkbuffer(L, 1);
     if (b->subcount >= 0)
         return 0;
     else {
@@ -482,7 +470,7 @@ static int lbE_clear(lua_State *L) {
 static int lbE_copy(lua_State *L) {
     buffer *b = lb_checkbuffer(L, 1);
     size_t len = b->len, pos = real_range(L, 2, &len);
-    lb_pushlstring(L, &b->str[pos], len);
+    lb_pushbuffer(L, &b->str[pos], len);
     return 1;
 }
 
@@ -719,14 +707,28 @@ static int fmterror(parse_info *info, const char *msgfmt, ...) {
     return luaL_argerror(I(L), I(fmtpos) - I(base) + 1, msg);
 }
 
+#if LUA_VERSION_NUM >= 502
+static const char *lb_pushlstring(lua_State *L, const char *str, size_t len) {
+    return lb_pushbuffer(L, str, len)->str;
+}
+#else
+static void lb_pushlstring(lua_State *L, const char *str, size_t len) {
+    lb_pushbuffer(L, str, len);
+}
+#endif
+
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     numcast_t buf;
     size_t pos;
     int top = lua_gettop(I(L));
+#if LUA_VERSION_NUM >= 502
+    typedef const char *(*pushlstring_t)
+        (lua_State *L, const char *str, size_t len);
+#else
     typedef void (*pushlstring_t)(lua_State *L, const char *str, size_t len);
+#endif
     pushlstring_t pushlstring = isupper(fmt) ?
-        (pushlstring_t)lb_pushlstring :
-        (pushlstring_t)lua_pushlstring;
+                                    lb_pushlstring : lua_pushlstring;
 
 #define SINK() do { if (I(level) == 0 && count < 0) pack_checkstack(1); \
     sink(info); } while (0)
@@ -1114,7 +1116,7 @@ static int do_pack(lua_State *L, buffer *b, int base, int narg, int pack) {
 static int lbE_pack(lua_State *L) {
     buffer *b;
     int base = 1;
-    if ((b = lb_tobuffer(L, 1)) == NULL) {
+    if ((b = lb_testbuffer(L, 1)) == NULL) {
         b = lb_newbuffer(L);
         lua_insert(L, 1);
         base = 2;
@@ -1197,8 +1199,8 @@ static int lbE_setuint(lua_State *L) {
 /* meta methods */
 
 static int lbM_gc(lua_State *L) {
-    if (lb_isbuffer(L, 1)) {
-        buffer *b = (buffer*)lua_touserdata(L, 1);
+    buffer *b;
+    if ((b = lb_rawtestbuffer(L, 1)) != NULL && !lb_isinvalidsub(b)) {
 #ifdef LB_SUBBUFFER
         if (lb_issubbuffer(b)) {
             lb_removesubbuffer((subbuffer*)b);
@@ -1233,19 +1235,21 @@ static int check_offset(int offset, int len, int extra) {
 }
 
 static int lbM_index(lua_State *L) {
-#ifdef LB_SUBBUFFER
-    buffer *b = (buffer*)luaL_checkudata(L, 1, LB_LIBNAME);
-#else
-    buffer *b = lb_checkbuffer(L, 1);
-#endif
+    buffer *b = lb_rawtestbuffer(L, 1);
     int pos;
+
+    if (b == NULL) {
+        typeerror(L, 1, 1, lb_libname);
+        return 0; /* avoid warning */
+    }
 
     switch (lua_type(L, 2)) {
     case LUA_TSTRING:
         lua_rawget(L, lua_upvalueindex(1));
         break;
     case LUA_TNUMBER:
-        if ((pos = check_offset(luaL_checkint(L, 2), b->len, 0)) >= 0)
+        if (!lb_isinvalidsub(b)
+                && (pos = check_offset(luaL_checkint(L, 2), b->len, 0)) >= 0)
             lua_pushinteger(L, uchar(b->str[pos]));
         else
             lua_pushnil(L);
@@ -1292,7 +1296,7 @@ static int lbM_call(lua_State *L) {
 
 #ifdef LB_REDIR_STRLIB
 static int redir_to_strlib(lua_State *L, const char *name) {
-    buffer *b = lb_tobuffer(L, 1);
+    buffer *b = lb_testbuffer(L, 1);
     int i, base = 1, top = lua_gettop(L);
     if (b != NULL) {
         lua_pushlstring(L, b->str != NULL ? b->str : "", b->len);
@@ -1301,7 +1305,7 @@ static int redir_to_strlib(lua_State *L, const char *name) {
         top += 1;
     }
     for (i = base; i <= top; ++i) {
-        buffer *b = lb_tobuffer(L, i);
+        buffer *b = lb_testbuffer(L, i);
         if (b != NULL) {
             lua_pushlstring(L, b->str != NULL ? b->str : "", b->len);
             lua_replace(L, i);
@@ -1318,7 +1322,7 @@ static int redir_to_strlib(lua_State *L, const char *name) {
     if (lua_isstring(L, 2) && b != NULL) {
         size_t len;
         const char *str = lua_tolstring(L, 2, &len);
-        lb_setbuffer(L, 1, str, len);
+        lb_setbuffer(L, b, str, len);
         lua_remove(L, 2);
     }
     return lua_gettop(L);
@@ -1337,6 +1341,8 @@ redir_function(match)
 #endif
 
 /* module registration */
+
+const char lb_libname[] = "buffer";
 
 static const luaL_Reg funcs[] = {
     { "byte",      lbE_byte      },
@@ -1408,7 +1414,7 @@ int luaopen_buffer(lua_State *L) {
     luaL_newlib(L, funcs); /* 1 */
 #else
     const char *libname = lua_gettop(L) >= 1 ? lua_tostring(L, 1) : NULL;
-    luaL_register(L, libname != NULL ? libname : LB_LIBNAME, funcs); /* 1 */
+    luaL_register(L, libname != NULL ? libname : lb_libname, funcs); /* 1 */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
     lua_pushliteral(L, "__call"); /* 3 */
@@ -1424,21 +1430,32 @@ int luaopen_buffer(lua_State *L) {
 #endif
 
     /* create metatable */
-    if (luaL_newmetatable(L, LB_LIBNAME)) { /* 2 */
-        lua_pushvalue(L, -2); /* (1)->3 */
-#if LUA_VERSION_NUM >= 502
-        luaL_setfuncs(L, mt, 1);
+#if LUA_VERSION_NUM > 502
+    lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
 #else
+    lua_pushlightuserdata(L, (void*)lb_libname);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+#endif
+    if (lua_isnil(L, -1)) { /* 2 */
+        lua_pop(L, 1); /* pop 2 */
+#if LUA_VERSION_NUM >= 502
+        luaL_newlibtable(L, mt);
+        luaL_setfuncs(L, mt, 1);
+        lua_rawsetp(L, LUA_REGISTRYINDEX, (void*)lb_libname);
+#else
+        lua_pushlightuserdata(L, (void*)lb_libname);
+        lua_createtable(L, 0, sizeof(mt)/sizeof(mt[0]));
+        lua_pushvalue(L, -3); /* (1)->3 */
         luaI_openlib(L, NULL, mt, 1);
+        lua_rawset(L, LUA_REGISTRYINDEX);
 #endif
     }
-    lua_pop(L, 1); /* pop 2 */
 
     return 1;
 }
 
 /*
- * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+ * cc: flags+='-g -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1'
  * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'

@@ -15,14 +15,57 @@
 
 /* buffer interface */
 
-#ifdef LB_SUBBUFFER
-buffer *lb_checkbuffer(lua_State *L, int narg) {
-    buffer *b = (buffer*)luaL_checkudata(L, narg, LB_LIBNAME);
+buffer *lb_rawtestbuffer(lua_State *L, int narg) {
+    void *p = lua_touserdata(L, narg);
+    if (p != NULL) {  /* value is a userdata? */
+        if (lua_getmetatable(L, narg)) {  /* does it have a metatable? */
+            /* get correct metatable */
+#if LUA_VERSION_NUM >= 502
+            lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
+#else
+            lua_pushlightuserdata(L, (void*)lb_libname);
+            lua_rawget(L, LUA_REGISTRYINDEX);
+#endif
+            if (!lua_rawequal(L, -1, -2))  /* not the same? */
+                p = NULL;  /* value is a userdata with wrong metatable */
+            lua_pop(L, 2);  /* remove both metatables */
+            return (buffer*)p;
+        }
+    }
+    return NULL;  /* value is not a userdata with a metatable */
+}
+
+buffer *lb_testbuffer(lua_State *L, int narg) {
+    buffer *b = lb_rawtestbuffer(L, narg);
     if (b != NULL && lb_isinvalidsub(b))
         luaL_error(L, "invalid subbuffer (%p)", b);
     return b;
 }
 
+static int typeerror (lua_State *L, int narg, const char *tname) {
+  const char *msg = lua_pushfstring(L, "%s expected, got %s",
+                                    tname, luaL_typename(L, narg));
+  return luaL_argerror(L, narg, msg);
+}
+
+buffer *lb_checkbuffer(lua_State *L, int narg) {
+    buffer *b = lb_testbuffer(L, narg);
+    if (b == NULL)
+        typeerror(L, narg, lb_libname);
+    return b;
+}
+
+static void lb_setmetatable(lua_State *L) {
+#if LUA_VERSION_NUM >= 502
+    lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
+#else
+    lua_pushlightuserdata(L, (void*)lb_libname);
+    lua_rawget(L, LUA_REGISTRYINDEX);
+#endif
+    lua_setmetatable(L, -2);
+}
+
+#ifdef LB_SUBBUFFER
 subbuffer *lb_initsubbuffer(subbuffer *b) {
     b->str = NULL;
     b->len = 0;
@@ -86,8 +129,7 @@ buffer *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end) {
     }
 
     sb = (subbuffer*)lua_newuserdata(L, sizeof(subbuffer)); /* 1 */
-    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
-    lua_setmetatable(L, -2); /* 2->1 */
+    lb_setmetatable(L);
 
     if (b->subcount == LB_SUBS_MAX)
         lb_removesubbuffer(b->subs[0]);
@@ -119,7 +161,7 @@ void lb_removesubbuffer (subbuffer *b) {
 }
 
 static char *realloc_subbuffer(lua_State *L, subbuffer *sb, size_t len) {
-    if (!lb_isinvalidsub(sb)) {
+    if (sb != NULL && !lb_isinvalidsub(sb)) {
         buffer *pb = sb->parent;
         size_t begin = sb->str - pb->str;
         size_t pb_oldlen = pb->len;
@@ -145,6 +187,8 @@ static char *realloc_subbuffer(lua_State *L, subbuffer *sb, size_t len) {
                 return sb->str;
             }
         }
+
+        /* we need to move data *before* the buffer is shorten */
         else { /* assume shorten length never fail */
             MAINTAIN_SUBBUFFER();
             if (lb_realloc(L, pb, pb->len + dlen)) {
@@ -227,30 +271,6 @@ char *lb_realloc(lua_State *L, buffer *b, size_t len) {
     return b->str;
 }
 
-int lb_isbuffer(lua_State *L, int narg) {
-    if (lua_getmetatable(L, narg)) {
-        lua_getfield(L, LUA_REGISTRYINDEX, LB_LIBNAME);
-        if (!lua_isnil(L, -1) && lua_rawequal(L, -1, -2)) {
-            lua_pop(L, 2);
-            return 1;
-        }
-        lua_pop(L, 2);
-    }
-    return 0;
-}
-
-buffer *lb_tobuffer(lua_State *L, int narg) {
-    if (lb_isbuffer(L, narg)) {
-        buffer *b = (buffer*)lua_touserdata(L, narg);
-#ifdef LB_SUBBUFFER
-        if (lb_isinvalidsub(b))
-            luaL_error(L, "invalid subbuffer (%p)", b);
-#endif
-        return b;
-    }
-    return NULL;
-}
-
 buffer *lb_initbuffer(buffer *b) {
     b->str = NULL;
     b->len = 0;
@@ -267,8 +287,7 @@ buffer *lb_initbuffer(buffer *b) {
 
 buffer *lb_newbuffer(lua_State *L) {
     buffer *b = lb_initbuffer((buffer*)lua_newuserdata(L, sizeof(buffer))); /* 1 */
-    luaL_getmetatable(L, LB_LIBNAME); /* 2 */
-    lua_setmetatable(L, -2); /* 2->1 */
+    lb_setmetatable(L);
     return b;
 }
 
@@ -286,8 +305,7 @@ buffer *lb_pushbuffer(lua_State *L, const char *str, size_t len) {
     return b;
 }
 
-const char *lb_setbuffer(lua_State *L, int narg, const char *str, size_t len) {
-    buffer *b = lb_tobuffer(L, narg);
+const char *lb_setbuffer(lua_State *L, buffer *b, const char *str, size_t len) {
     if (b != NULL && lb_realloc(L, b, len))
         memcpy(b->str, str, len);
     return b->str;
@@ -296,17 +314,8 @@ const char *lb_setbuffer(lua_State *L, int narg, const char *str, size_t len) {
 /* compatible with lua api */
 
 int lb_isbufferorstring(lua_State *L, int narg) {
-    return lua_type(L, narg) == LUA_TSTRING || lb_isbuffer(L, narg);
-}
-
-const char *lb_pushlstring(lua_State *L, const char *str, size_t len) {
-    return lb_pushbuffer(L, str, len)->str;
-}
-
-static int typeerror (lua_State *L, int narg, const char *tname) {
-  const char *msg = lua_pushfstring(L, "%s expected, got %s",
-                                    tname, luaL_typename(L, narg));
-  return luaL_argerror(L, narg, msg);
+    return lua_type(L, narg) == LUA_TSTRING
+        || lb_testbuffer(L, narg) != NULL;
 }
 
 static const char *tolstring(lua_State *L, buffer *b, size_t *plen) {
@@ -321,14 +330,14 @@ static const char *tolstring(lua_State *L, buffer *b, size_t *plen) {
 const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
     const char *str = lua_tolstring(L, narg, plen);
     if (str != NULL) return str;
-    return tolstring(L, lb_tobuffer(L, narg), plen);
+    return tolstring(L, lb_testbuffer(L, narg), plen);
 }
 
 const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
     if (lua_type(L, narg) == LUA_TSTRING)
         return lua_tolstring(L, narg, plen);
     else {
-        buffer *b = lb_tobuffer(L, narg);
+        buffer *b = lb_testbuffer(L, narg);
         if (b != NULL)
             return tolstring(L, b, plen);
         typeerror(L, narg, "buffer or string");
@@ -337,26 +346,15 @@ const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
 }
 
 const char *lb_optlstring(lua_State *L, int narg, const char *def, size_t *plen) {
-    if (lua_type(L, narg) == LUA_TSTRING)
-        return lua_tolstring(L, narg, plen);
-    else if (lb_isbuffer(L, narg)) {
-        buffer *b = (buffer*)lua_touserdata(L, narg);
-#ifdef LB_SUBBUFFER
-        if (lb_isinvalidsub(b))
-            luaL_error(L, "invalid subbuffer (%p)", b);
-#endif
-        return tolstring(L, b, plen);
-    }
-    else if (lua_isnoneornil(L, narg)) {
+    if (lua_isnoneornil(L, narg)) {
         if (plen != NULL) *plen = def ? strlen(def) : 0;
         return def;
     }
-    typeerror(L, narg, "buffer or string");
-    return NULL; /* avoid warning */
+    return lb_checklstring(L, narg, plen);
 }
 
 /*
- * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
- * cc: flags+='-DLUA_BUILD_AS_DLL -DLB_SUBBUFFER' input='*.c' output='buffer.dll'
+ * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua52/include' libs+='d:/lua52/lua52.dll'
+ * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */
