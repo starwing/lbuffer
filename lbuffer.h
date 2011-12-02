@@ -7,6 +7,7 @@
 
 extern const char lb_libname[];
 
+#define LB_LIBNAME lb_libname
 #define LB_VERSION "0.1"
 #define LB_STRUCT_HEADER size_t len; char *str
 

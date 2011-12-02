@@ -151,7 +151,7 @@ void lb_removesubbuffer (subbuffer *b) {
     if (pb != NULL && lb_issubbuffer(b)) {
         size_t i, j;
         lb_initsubbuffer(b);
-        for (i = j = 0; i < pb->subcount; ++i) {
+        for (i = j = 0; i < (size_t)pb->subcount; ++i) {
             subbuffer *sb = pb->subs[i];
             if (sb != NULL && !lb_isinvalidsub(sb))
                 pb->subs[j++] = sb;
@@ -204,7 +204,7 @@ static void redir_subbuffers(buffer *b, char *newstr, size_t len) {
     size_t i, j;
 
     if (len == 0) {
-        for (i = 0; i < b->subcount; ++i) {
+        for (i = 0; i < (size_t)b->subcount; ++i) {
             if (b->subs[i] != NULL) {
                 lb_initsubbuffer(b->subs[i]);
                 b->subs[i] = NULL;
@@ -213,7 +213,7 @@ static void redir_subbuffers(buffer *b, char *newstr, size_t len) {
         b->subcount = 0;
     }
     else if (len >= b->len && newstr != b->str) {
-        for (i = 0; i < b->subcount; ++i) {
+        for (i = 0; i < (size_t)b->subcount; ++i) {
             subbuffer *sb = b->subs[i];
             if (sb != NULL) {
                 size_t begin = sb->str - b->str;
@@ -222,7 +222,7 @@ static void redir_subbuffers(buffer *b, char *newstr, size_t len) {
         }
     }
     else if (len < b->len) {
-        for (i = j = 0; i < b->subcount; ++i) {
+        for (i = j = 0; i < (size_t)b->subcount; ++i) {
             subbuffer *sb = b->subs[i];
             if (sb != NULL) {
                 size_t begin = sb->str - b->str;
