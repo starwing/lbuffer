@@ -13,7 +13,7 @@ extern const char lb_libname[];
 
 #define LB_API LUA_API
 
-#if !defined(LB_SUBBUFFER) || LB_SUBBUFFER
+#if !defined(LB_SUBBUFFER) || defined(LB_SUBS_MAX) || LB_SUBBUFFER
 #  undef  LB_SUBBUFFER
 #  define LB_SUBBUFFER
 #else
@@ -73,12 +73,12 @@ LB_API buffer      *lb_checkbuffer      (lua_State *L, int narg);
 LB_API buffer      *lb_pushbuffer       (lua_State *L, const char *str, size_t len);
 LB_API const char  *lb_setbuffer        (lua_State *L, buffer *b, const char *str, size_t len);
 
-LUALIB_API int      luaopen_buffer(lua_State *L);
+LUALIB_API int      luaopen_buffer      (lua_State *L);
 
 #ifdef LB_SUBBUFFER
-LB_API buffer      *lb_newsubbuffer (lua_State *L, buffer *b, size_t begin, size_t end);
-LB_API subbuffer   *lb_initsubbuffer(subbuffer *b);
-LB_API void         lb_removesubbuffer (subbuffer *b);
+LB_API buffer      *lb_newsubbuffer     (lua_State *L, buffer *b, size_t begin, size_t end);
+LB_API subbuffer   *lb_initsubbuffer    (subbuffer *b);
+LB_API void         lb_removesubbuffer  (subbuffer *b);
 #endif /* LB_SUBBUFFER */
 
 LB_API int          lb_isbufferorstring (lua_State *L, int narg);

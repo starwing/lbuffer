@@ -184,5 +184,133 @@ reference
 
 .. _reference:
 
+compatible functions
+--------------------
+
+there are serveral functions that are redirected from standard string
+module:
+
+    * ``dump``
+    * ``find``
+    * ``format``
+    * ``gmatch``
+    * ``gsub``
+    * ``match``
+
+they are just simply convert its buffer arguments to string, and call
+functions in string module, and set return string values (if any) to
+the first buffer argument. so notice that they may allocate lots of
+memory. It would better not use these functions.
+
+the usage is just the same like the same functions in string module.
+
+there are also some functions are same as string module, but they are
+rewrite in lbuffer, for better performance, since it needn't copy data
+from buffer and normal lua string:
+
+    * ``byte``
+    * ``char``
+    * ``len``
+    * ``lower``
+    * ``reverse``
+    * ``upper``
+
+note that the ``len`` function has extended by lbuffer:
+
+- ``buffer.len([newlen])``
+
+    if ``newlen`` is given, the buffer will be expand/truncate to
+    newlen bytes, Extra bytes are set to ascii code 0.
+
+modifie functions
+-----------------
+
+there are serveral functions that used to modify buffer:
+    * ``new``
+    * ``append``
+    * ``assign``
+    * ``insert``
+    * ``set``
+
+new is the constructor of buffer, and others are in lbuffer module, or
+can indexed from a buffer object.
+
+they accepts almost the same arguments, there are two forms, first is ::
+
+    modify([pos, ][len, ][b, [i[, j]]])
+
+only ``append``, ``insert`` and ``set`` could have optional ``pos``
+argument, it means the position in buffer that modify makes. the
+``pos``, ``i`` and ``j`` arguments in all lbuffer argument are 1
+based, just like array index in Lua. they can be negative, that means
+the index is begin at the end of buffer.
+
+if ``len`` is given, exactly ``len`` bytes in buffer are
+insert/modified, if ``b`` is bigger than ``len``, they will be
+truncated.  and if ``b`` is smaller than ``len``, b will repeated
+until it reached to ``len``. if ``b`` is omitted, the ascii code 0
+will be used.
+
+e.g. ::
+
+    > =buffer(10, "a")
+    aaaaaaaaaa
+    > =buffer(3, "apple")
+    app
+    > =buffer(10, "apple")
+    appleapple
+    > =buffer(10):quote()
+    "\000\000\000\000\000\000\000\000\000\000"
+    >
+
+``b`` can be buffer or string. ``i`` and ``j`` locale the useful piece
+in ``b`` ::
+
+    > =buffer("apple", 2, -2)
+    ppl
+
+the second form is ::
+
+    modify([pos, ]ud, len)
+
+it accept a userdata and a length, and reads ``len`` bytes from the
+address of ``ud``, **be careful** with this form, it may very
+dangerous!!
+
+binary pack functions
+---------------------
+
+* pack
+* unpack
+* getint
+* getuint
+* setint
+* setuint
+
+subbuffer functions
+-------------------
+
+* sub
+* subcount
+* offset
+
+misc functions
+--------------
+
+* alloc
+* clear
+* cmp
+* copy
+* eq
+* free
+* ipairs
+* isbuffer
+* move
+* quote
+* remove
+* tohex
+* topointer
+* tostring
+
 C module developer note
 =======================
