@@ -778,7 +778,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     } else { \
         size_t blen = I(b)->len; \
         if (count > 0) pack_checkstack(count); \
-        while (count-- && I(pos) < blen)
+        while (count--)
 #define END_PACK() \
     } break
 
@@ -1102,6 +1102,8 @@ static int parse_fmt(parse_info *info) {
             int count = 1;
             parse_fmtargs(info, &wide, &count);
             if (!do_packfmt(info, fmt, wide, count)) {
+                if (pif_test(info, PIF_STRINGKEY))
+                    lua_pop(I(L), 1);
                 lua_pop(I(L), I(level) * 3); /* 3 values per level */
                 I(level) = 0;
                 lua_pushnil(I(L)); ++I(nret);
