@@ -1,6 +1,6 @@
 #define LUA_LIB
 #include "lbuffer.h"
-#include "lualib.h"
+#include "lualib.h" /* for LUA_FILEHANDLE */
 
 
 #include <stdarg.h>
@@ -309,6 +309,7 @@ static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c,
     return newstr;
 }
 
+#ifdef LB_FILEHANDLE
 static void* testudata(lua_State *L, int narg, const char *tname) {
     void *p = lua_touserdata(L, narg);
     if (p != NULL) {  /* value is a userdata? */
@@ -338,11 +339,14 @@ static const char *readfile(lua_State *L, int narg, size_t *plen) {
     }
     return NULL;
 }
+#endif /* LB_FILEHANDLE */
 
 static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
     void *u = NULL;
+#ifdef LB_FILEHANDLE
     if ((u = (void*)readfile(L, narg, plen)) != NULL)
         return (const char*)u;
+#endif /* LB_FILEHANDLE */
     if ((u = lua_touserdata(L, narg)) != NULL) {
         int len = luaL_checkint(L, narg+1);
         if (plen != NULL) *plen = len >= 0 ? len : 0;
