@@ -205,8 +205,8 @@ memory. It would better not use these functions.
 the usage is just the same like the same functions in string module.
 
 there are also some functions are same as string module, but they are
-rewrite in lbuffer, for better performance, since it needn't copy data
-from buffer and normal lua string:
+rewriten in lbuffer for better performance, since they needn't copy
+data from buffer and normal lua string:
 
     * ``byte``
     * ``char``

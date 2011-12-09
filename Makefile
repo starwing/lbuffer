@@ -9,7 +9,7 @@ LIBDIR   = -L/usr/lib
 MACOSX_VERSION = 10.4
 
 PLAT = none
-DEFS = -DLB_SUBBUFFER
+DEFS =
 CMOD = buffer.so
 OBJS = lbuffer.o lb_interface.o
 

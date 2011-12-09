@@ -1,5 +1,6 @@
 #define LUA_LIB
 #include "lbuffer.h"
+#include "lualib.h"
 
 
 #include <stdarg.h>
@@ -308,8 +309,40 @@ static char *prepare_cmd(lua_State *L, buffer *b, enum cmd c,
     return newstr;
 }
 
+static void* testudata(lua_State *L, int narg, const char *tname) {
+    void *p = lua_touserdata(L, narg);
+    if (p != NULL) {  /* value is a userdata? */
+        if (lua_getmetatable(L, narg)) {  /* does it have a metatable? */
+            lua_getfield(L, LUA_REGISTRYINDEX, tname);  /* get correct metatable */
+            if (!lua_rawequal(L, -1, -2))  /* not the same? */
+                p = NULL;  /* value is a userdata with wrong metatable */
+            lua_pop(L, 2);  /* remove both metatables */
+            return p;
+        }
+    }
+    return NULL;  /* value is not a userdata with a metatable */
+}
+
+static const char *readfile(lua_State *L, int narg, size_t *plen) {
+    /* narg must absolute index */
+    if (testudata(L, narg, LUA_FILEHANDLE) != NULL) {
+        int top = lua_gettop(L);
+        lua_getfield(L, narg, "read");
+        lua_insert(L, narg);
+        if (top == narg) {
+            lua_pushliteral(L, "*a");
+            top += 1;
+        }
+        lua_call(L, top - narg + 1, 1);
+        return lua_tolstring(L, narg, plen);
+    }
+    return NULL;
+}
+
 static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
     void *u = NULL;
+    if ((u = (void*)readfile(L, narg, plen)) != NULL)
+        return (const char*)u;
     if ((u = lua_touserdata(L, narg)) != NULL) {
         int len = luaL_checkint(L, narg+1);
         if (plen != NULL) *plen = len >= 0 ? len : 0;
@@ -1455,7 +1488,7 @@ int luaopen_buffer(lua_State *L) {
 }
 
 /*
- * cc: flags+='-g -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+ * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
  * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1'
  * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
