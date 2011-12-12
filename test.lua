@@ -1,3 +1,4 @@
+os.execute("chcp 936")
 local buffer = require 'buffer'
 
 -- borrowed from brimworks's lua-zlib
@@ -40,6 +41,7 @@ function test()
     test_copy()
     test_move()
     test_remove()
+    test_swap()
     test_cmp()
     test_mt()
     test_pack()
@@ -273,6 +275,20 @@ function test_move()
     ok(b :eq "apple-apple", "move prefix of buffer ("..b..")")
     local b = buffer "apple-pie" :move(-3, 2, 4)
     ok(b :eq "apple-ppl", "move middle of buffer ("..b..")")
+end
+
+function test_swap()
+    test_msg "test swap operation"
+    local b = buffer"apple-pie"
+    for i = 1, #b do
+        local s = b:tostring()
+        b:swap(i)
+        ok(b :eq (s:sub(i)..s:sub(1, i-1)), "swap 1~"..(i-1).." and "..i.."~"..#b.." ("..b..")")
+    end
+    local b = buffer "apple-pie"
+    ok(b:swap(1,5,-4):eq "-applepie", "swap two sibling ("..b..")")
+    local b = buffer "apple-pie"
+    ok(b:swap(1,5,-3,-1):eq "pie-apple", "swap two range ("..b..")")
 end
 
 function test_remove()

@@ -334,7 +334,7 @@ const char *lb_tolstring(lua_State *L, int narg, size_t *plen) {
 }
 
 const char *lb_checklstring(lua_State *L, int narg, size_t *plen) {
-    if (lua_type(L, narg) == LUA_TSTRING)
+    if (lua_isstring(L, narg))
         return lua_tolstring(L, narg, plen);
     else {
         buffer *b = lb_testbuffer(L, narg);

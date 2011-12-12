@@ -308,6 +308,7 @@ misc functions
 * move
 * quote
 * remove
+* swap
 * tohex
 * topointer
 * tostring

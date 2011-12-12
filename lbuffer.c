@@ -341,14 +341,20 @@ static const char *readfile(lua_State *L, int narg, size_t *plen) {
 }
 #endif /* LB_FILEHANDLE */
 
-static const char *udtolstring(lua_State *L, int narg, size_t *plen) {
+static const char *udtolstring(lua_State *L, int base, int narg,
+        size_t *plen) {
     void *u = NULL;
 #ifdef LB_FILEHANDLE
     if ((u = (void*)readfile(L, narg, plen)) != NULL)
         return (const char*)u;
 #endif /* LB_FILEHANDLE */
     if ((u = lua_touserdata(L, narg)) != NULL) {
-        int len = luaL_checkint(L, narg+1);
+        int len;
+        if (!lua_isnumber(L, narg+1)) {
+            typeerror(L, base, narg+1, "number");
+            return NULL; /* avoid warning */
+        }
+        len = (int)lua_tointeger(L, narg+1);
         if (plen != NULL) *plen = len >= 0 ? len : 0;
 #ifdef LB_COMPAT_TOLUA
         if (!lua_islightuserdata(L, narg)) /* compatble with tolua */
@@ -385,7 +391,7 @@ static int do_cmd(lua_State *L, buffer *b, int base, int narg, enum cmd c) {
         if (!lua_isnoneornil(L, narg+1)) {
             if ((str = lb_tolstring(L, narg+1, &len)) != NULL)
                 str += real_range_base(L, base, narg+2, &len);
-            else if ((str = udtolstring(L, narg+1, &len)) == NULL)
+            else if ((str = udtolstring(L, base, narg+1, &len)) == NULL)
                 typeerror(L, base, narg+1, "string, buffer or userdata");
         }
         if (prepare_cmd(L, b, c, pos, fill_len))
@@ -393,7 +399,7 @@ static int do_cmd(lua_State *L, buffer *b, int base, int narg, enum cmd c) {
     }
     else if (lua_isuserdata(L, narg)) {
         size_t len = 0;
-        const char *str = udtolstring(L, narg, &len);
+        const char *str = udtolstring(L, base, narg, &len);
         if (prepare_cmd(L, b, c, pos, len))
             memcpy(&b->str[pos], str, len);
     }
@@ -525,6 +531,80 @@ static int lbE_move(lua_State *L) {
         memmove(&b->str[dst], &b->str[pos], len);
     if ((size_t)dst > oldlen)
         memset(&b->str[oldlen], 0, dst - oldlen);
+    lua_settop(L, 1);
+    return 1;
+}
+
+static void exchange(char *p1, char *p2, char *p3) {
+    size_t l1 = p2 - p1, l2 = p3 - p2;
+    if (l1 == 1) {
+        char ch = *p1;
+        memmove(p1, p2, l2);
+        p1[l2] = ch;
+    }
+    else if (l2 == 1) {
+        char ch = *p2;
+        memmove(p1+1, p1, l1);
+        p1[0] = ch;
+    }
+    else for (; l1 != 0 && l2 != 0; l1 = p2 - p1, l2 = p3 - p2) {
+        char *pm = l1 > l2 ? p2 : p2 + l2-l1;
+        char *pi = p1, *pj = pm;
+        for (; pi != p2 && pj != p3; ++pi, ++pj) {
+            char ch = *pi;
+            *pi = *pj;
+            *pj = ch;
+        }
+        if (pi == p2)
+            p3 = pm;
+        else /* if (pj == p3) */
+            p1 = pi;
+    }
+}
+
+static void exchange_split(char *p1, char *p2, char *p3, char *p4) {
+    size_t l1 = p2 - p1, l2 = p4 - p3; 
+    char *pm = l1 > l2 ? p3 : p3 + l2-l1;
+    char *pi = p1, *pj = pm;
+    for (; pi != p2 && pj != p4; ++pi, ++pj) {
+        char ch = *pi;
+        *pi = *pj;
+        *pj = ch;
+    }
+    if (pi == p2)
+        exchange(p1, p3, pm);
+    else /* if (pj == p4) */
+        exchange(pi, p2, p4);
+}
+
+static int lbE_swap(lua_State *L) {
+    size_t p1, l1, p2, l2;
+    buffer *b = lb_checkbuffer(L, 1);
+    if (lua_isnoneornil(L, 3)) {
+        p2 = real_offset(luaL_checkint(L, 2), b->len);
+        l2 = b->len - p2;
+        p1 = 0, l1 = p2;
+    }
+    else {
+        l1 = b->len, p1 = real_range(L, 2, &l1);
+        l2 = b->len, p2 = real_range(L, 4, &l2);
+        if (lua_isnoneornil(L, 5)) {
+            size_t new_p2 = p1+l1;
+            l2 = p2 - new_p2 + 1;
+            p2 = new_p2;
+        }
+        else if (p1+l1 > p2) {
+            size_t old_l1 = l1, old_p2 = p2;
+            l1 = p2 - p1;
+            p2 = p1 + old_l1;
+            l2 -= p2 - old_p2;
+        }
+    }
+    if (p1+l1 == p2)
+        exchange(&b->str[p1], &b->str[p2], &b->str[p2+l2]);
+    else
+        exchange_split(&b->str[p1], &b->str[p1+l1],
+                &b->str[p2], &b->str[p2+l2]);
     lua_settop(L, 1);
     return 1;
 }
@@ -1422,6 +1502,7 @@ static const luaL_Reg funcs[] = {
     { "set",       lbE_set       },
     { "setint",    lbE_setuint   },
     { "setuint",   lbE_setuint   },
+    { "swap",      lbE_swap      },
     { "tohex",     lbE_tohex     },
     { "topointer", lbE_topointer },
     { "tostring",  lbE_tostring  },
@@ -1495,7 +1576,7 @@ int luaopen_buffer(lua_State *L) {
 
 /*
  * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
- * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1'
+ * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE'
  * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
  * cc: run='lua test.lua'
  */
