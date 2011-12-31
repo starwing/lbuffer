@@ -9,4 +9,4 @@
 *.html
 *~
 !test.lua
-tags
+tags*

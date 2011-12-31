@@ -374,8 +374,8 @@ const char *lb_optlstring(lua_State *L, int narg, const char *def, size_t *plen)
 }
 
 /*
- * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua52/include' libs+='d:/lua52/lua52.dll'
+ * cc: lua='lua52' flags+='-s -O2 -Wall -pedantic -mdll -Id:/$lua/include' libs+='d:/$lua/$lua.dll'
  * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE'
- * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
- * cc: run='lua test.lua'
+ * cc: flags+='-DLUA_BUILD_AS_DLL' input='lb*.c' output='buffer.dll'
+ * cc: run='$lua test.lua'
  */

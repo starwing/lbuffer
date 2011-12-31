@@ -1,4 +1,3 @@
-os.execute("chcp 936")
 local buffer = require 'buffer'
 
 -- borrowed from brimworks's lua-zlib

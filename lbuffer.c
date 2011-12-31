@@ -1216,7 +1216,7 @@ static void parse_stringkey(parse_info *info)
 {
     skip_white(I(fmt));
     if (isalpha(*I(fmt)) || *I(fmt) == '_') {
-        const char *curpos = I(fmt), *end;
+        const char *curpos = I(fmt)++, *end;
         while (isalnum(*I(fmt)) || *I(fmt) == '_')
             ++I(fmt);
         end = I(fmt);
@@ -1623,9 +1623,8 @@ int luaopen_buffer(lua_State *L)
     luaL_register(L, libname != NULL ? libname : lb_libname, funcs); /* 1 */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
-    lua_pushliteral(L, "__call"); /* 3 */
-    lua_pushcfunction(L, lbM_call); /* 4 */
-    lua_rawset(L, -3); /* 3,4->2 */
+    lua_pushcfunction(L, lbM_call); /* 3 */
+    lua_setfield(L, -2, "__call"); /* 3->2 */
     lua_setmetatable(L, -2); /* 2->1 */
 
     lua_pushliteral(L, LB_VERSION); /* 2 */
@@ -1645,15 +1644,16 @@ int luaopen_buffer(lua_State *L)
     if (lua_isnil(L, -1)) { /* 2 */
         lua_pop(L, 1); /* pop 2 */
 #if LUA_VERSION_NUM >= 502
-        luaL_newlibtable(L, mt);
-        luaL_setfuncs(L, mt, 1);
-        lua_rawsetp(L, LUA_REGISTRYINDEX, (void*)lb_libname);
+        luaL_newlibtable(L, mt); /* 2 */
+        lua_pushvalue(L, -2); /* 1->3 */
+        luaL_setfuncs(L, mt, 1); /* 3->2 */
+        lua_rawsetp(L, LUA_REGISTRYINDEX, (void*)lb_libname); /* 2->env */
 #else
-        lua_pushlightuserdata(L, (void*)lb_libname);
-        lua_createtable(L, 0, sizeof(mt) / sizeof(mt[0]));
-        lua_pushvalue(L, -3); /* (1)->3 */
-        luaI_openlib(L, NULL, mt, 1);
-        lua_rawset(L, LUA_REGISTRYINDEX);
+        lua_pushlightuserdata(L, (void*)lb_libname); /* 2 */
+        lua_createtable(L, 0, sizeof(mt) / sizeof(mt[0])); /* 3 */
+        lua_pushvalue(L, -3); /* (1)->4 */
+        luaI_openlib(L, NULL, mt, 1); /* 4->3 */
+        lua_rawset(L, LUA_REGISTRYINDEX); /* 2,3->env */
 #endif
     }
 
@@ -1661,8 +1661,8 @@ int luaopen_buffer(lua_State *L)
 }
 
 /*
- * cc: flags+='-s -O2 -Wall -pedantic -mdll -Id:/lua/include' libs+='d:/lua/lua51.dll'
+ * cc: lua='lua52' flags+='-s -O2 -Wall -pedantic -mdll -Id:/$lua/include' libs+='d:/$lua/$lua.dll'
  * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE'
- * cc: flags+='-DLUA_BUILD_AS_DLL' input='*.c' output='buffer.dll'
- * cc: run='lua test.lua'
+ * cc: flags+='-DLUA_BUILD_AS_DLL' input='lb*.c' output='buffer.dll'
+ * cc: run='$lua test.lua'
  */
