@@ -5,6 +5,29 @@
 #include <string.h>
 
 
+#if LUA_VERSION_NUM < 502
+void lua_rawgetp(lua_State *L, int narg, const void *p)
+{
+    lua_pushlightuserdata(L, (void*)p);
+    lua_rawget(L, narg < 0 ? narg - 1 : narg);
+}
+
+void lua_rawsetp(lua_State *L, int narg, const void *p)
+{
+    lua_pushlightuserdata(L, (void*)p);
+    lua_insert(L, -2);
+    lua_rawset(L, narg < 0 ? narg - 1 : narg);
+}
+
+int lua_absindex(lua_State *L, int idx)
+{
+    return (idx > 0 || idx <= LUA_REGISTRYINDEX)
+        ? idx
+        : lua_gettop(L) + idx + 1;
+}
+#endif
+
+
 #ifdef LB_REPLACE_LUA_API
 #  undef lua_isstring
 #  undef lua_tolstring
@@ -21,12 +44,7 @@ buffer *lb_rawtestbuffer(lua_State *L, int narg)
     if (p != NULL) {  /* value is a userdata? */
         if (lua_getmetatable(L, narg)) {  /* does it have a metatable? */
             /* get correct metatable */
-#if LUA_VERSION_NUM >= 502
             lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
-#else
-            lua_pushlightuserdata(L, (void*)lb_libname);
-            lua_rawget(L, LUA_REGISTRYINDEX);
-#endif
             if (!lua_rawequal(L, -1, -2))  /* not the same? */
                 p = NULL;  /* value is a userdata with wrong metatable */
             lua_pop(L, 2);  /* remove both metatables */
@@ -61,12 +79,7 @@ buffer *lb_checkbuffer(lua_State *L, int narg)
 
 static void lb_setmetatable(lua_State *L)
 {
-#if LUA_VERSION_NUM >= 502
     lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
-#else
-    lua_pushlightuserdata(L, (void*)lb_libname);
-    lua_rawget(L, LUA_REGISTRYINDEX);
-#endif
     lua_setmetatable(L, -2);
 }
 

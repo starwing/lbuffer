@@ -1546,7 +1546,7 @@ redir_function(match)
 
 /* module registration */
 
-const char lb_libname[] = "buffer";
+LB_API const char lb_libname[] = "buffer";
 
 static const luaL_Reg funcs[] = {
     { "byte",      lbE_byte      },
@@ -1616,11 +1616,10 @@ static const luaL_Reg mt[] = {
 
 int luaopen_buffer(lua_State *L)
 {
-#if LUA_VERSION_NUM >= 502
     luaL_newlib(L, funcs); /* 1 */
-#else
-    const char *libname = lua_gettop(L) >= 1 ? lua_tostring(L, 1) : NULL;
-    luaL_register(L, libname != NULL ? libname : lb_libname, funcs); /* 1 */
+#if LUA_VERSION_NUM < 502
+    lua_pushvalue(L, -1); /* 2 */
+    lua_setglobal(L, lb_libname); /* (2) */
 #endif
     lua_createtable(L, 0, 1); /* 2 */
     lua_pushcfunction(L, lbM_call); /* 3 */
@@ -1635,26 +1634,13 @@ int luaopen_buffer(lua_State *L)
 #endif
 
     /* create metatable */
-#if LUA_VERSION_NUM > 502
     lua_rawgetp(L, LUA_REGISTRYINDEX, lb_libname);
-#else
-    lua_pushlightuserdata(L, (void*)lb_libname);
-    lua_rawget(L, LUA_REGISTRYINDEX);
-#endif
     if (lua_isnil(L, -1)) { /* 2 */
         lua_pop(L, 1); /* pop 2 */
-#if LUA_VERSION_NUM >= 502
         luaL_newlibtable(L, mt); /* 2 */
         lua_pushvalue(L, -2); /* 1->3 */
         luaL_setfuncs(L, mt, 1); /* 3->2 */
         lua_rawsetp(L, LUA_REGISTRYINDEX, (void*)lb_libname); /* 2->env */
-#else
-        lua_pushlightuserdata(L, (void*)lb_libname); /* 2 */
-        lua_createtable(L, 0, sizeof(mt) / sizeof(mt[0])); /* 3 */
-        lua_pushvalue(L, -3); /* (1)->4 */
-        luaI_openlib(L, NULL, mt, 1); /* 4->3 */
-        lua_rawset(L, LUA_REGISTRYINDEX); /* 2,3->env */
-#endif
     }
 
     return 1;
