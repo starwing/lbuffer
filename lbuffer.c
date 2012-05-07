@@ -86,13 +86,14 @@ static int lbE_tohex(lua_State *L) {
     int has_group = lua_type(L, 2) == LUA_TNUMBER, arg = 2;
     luaL_Buffer b;
     if (has_group) group = lua_tointeger(L, arg++);
+    if (group == 0) group = -1;
     sep = lb_optlstring(L, arg++, "", &seplen);
     if (has_group) gsep = lb_optlstring(L, arg++, "\n", &gseplen);
     upper = lua_toboolean(L, arg++);
     luaL_buffinit(L, &b);
-    for (i = 0; i < len; ++i) {
+    for (i = 0; i < len; ++i, ++col) {
         char *hexa = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-        if (col++ == group)
+        if (col == group)
             col = 0, luaL_addlstring(&b, gsep, gseplen);
         else if (i != 0)
             luaL_addlstring(&b, sep, seplen);
@@ -1493,7 +1494,7 @@ int luaopen_buffer(lua_State *L) {
 }
 
 /*
- * cc: lua='lua51' flags+='-s -O2 -Wall -pedantic -mdll -Id:/$lua/include' libs+='$lua.dll'
+ * cc: lua='lua52' flags+='-s -O2 -Wall -pedantic -mdll -Id:/$lua/include' libs+='$lua.dll'
  * cc: flags+='-DLB_SUBBUFFER=1 -DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE'
  * cc: flags+='-DLUA_BUILD_AS_DLL' input='lb*.c' output='buffer.dll'
  * cc: run='$lua test.lua'
