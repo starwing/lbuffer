@@ -48,14 +48,19 @@ typedef struct lb_Buffer {
     char initb[LUAL_BUFFERSIZE];
 } lb_Buffer;
 
-#define lb_addchar(B,c) \
-  ((void)((B)->n < (B)->size || lb_prepbuffsize((B), 1)), \
-   ((B)->b[(B)->n++] = (c)))
-
 #define lb_buffinitsize(L,B,sz) (lb_buffinit((L),(B)),lb_prepbuffsize((B),(sz)))
 #define lb_addsize(B,s)	 ((B)->n += (s))
 #define lb_prepbuffer(B)  lb_prepbuffsize((B), LUAL_BUFFERSIZE)
 #define lb_pushresultsize(B,sz) (lb_addsize(B,sz),lb_pushresult(b))
+
+#define lb_addchar(B,c) \
+  ((void)((B)->n < (B)->size || lb_prepbuffsize((B), 1)), \
+   ((B)->b[(B)->n++] = (c)))
+
+#define lb_atpos(B, pos, codes) \
+    do { size_t Bn_ = (B)->n;   \
+         (B)->n = (pos); codes; \
+         if ((B)->n < Bn_) (B)->n = Bn_; } while (0)
 
 
 LB_API void  lb_buffinit     (lua_State *L, lb_Buffer *B);
@@ -95,8 +100,8 @@ LB_API int lb_unpackuint (const char *s, size_t wide, int bigendian, lua_Integer
 LB_API int lb_packfloat   (lb_Buffer *B, size_t wide, int bigendian, lua_Number n);
 LB_API int lb_unpackfloat (const char *s, size_t wide, int bigendian, lua_Number *pn);
 
-LB_API int lb_pack   (lb_Buffer *B, size_t pos, const char *fmt, int args);
-LB_API int lb_unpack (const char *s, size_t n, const char *fmt);
+LB_API int lb_pack   (lb_Buffer *B, const char *fmt, int args);
+LB_API int lb_unpack (lua_State *L, const char *s, size_t n, const char *fmt);
 
 
 /* lua compatible APIs */

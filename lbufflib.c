@@ -569,10 +569,7 @@ static int Lsetuint(lua_State *L) {
     lua_Integer i = luaL_checkinteger(L, 2);
     int bigendian;
     size_t wide, pos = check_giargs(L, 3, B->n, &wide, &bigendian);
-    size_t n = B->n;
-    B->n = pos;
-    lb_packint(B, wide, bigendian, i);
-    if (B->n < n) B->n = n;
+    lb_atpos(B, pos, lb_packint(B, wide, bigendian, i));
     lua_settop(L, 1);
     return 1;
 }
@@ -583,6 +580,9 @@ static int Lsetuint(lua_State *L) {
 typedef struct parse_info {
     lb_Buffer *B;       /* working lb_Buffer */
     size_t pos;         /* current working position in buffer */
+    int is_bigendian;
+    int is_pack;
+    int is_stringkey;
     unsigned int flags; /* see PIF_* flags below */
     int narg, nret;     /* numbers of arguments/return values */
     int level, index;   /* the level/index of nest table */
@@ -592,20 +592,11 @@ typedef struct parse_info {
 
 #define I(field) (info->field)
 
-#define pif_test(i, flag)      (((i)->flags & (flag)) != 0)
-#define pif_clr(i, flag)       ((i)->flags &= ~(flag))
-#define pif_set(i, flag)       ((i)->flags |= (flag))
-
-/* flags */
-#define PIF_PACK         0x01
-#define PIF_BIGENDIAN    0x02
-#define PIF_STRINGKEY    0x04
-
 static int source(parse_info *info) {
     if (I(level) == 0)
         lua_pushvalue(I(B)->L, I(narg)++);
     else {
-        if (!pif_test(info, PIF_STRINGKEY))
+        if (!I(is_stringkey))
             lua_pushinteger(I(B)->L, I(index)++);
         lua_gettable(I(B)->L, -2);
     }
@@ -661,7 +652,7 @@ static void sink(parse_info *info) {
     if (I(level) == 0)
         ++I(nret);
     else {
-        if (!pif_test(info, PIF_STRINGKEY)) {
+        if (!I(is_stringkey)) {
             lua_pushinteger(I(B)->L, I(index)++);
             lua_insert(I(B)->L, -2);
         }
@@ -669,7 +660,8 @@ static void sink(parse_info *info) {
     }
 }
 
-#define pack_checkstack(n) luaL_checkstack(I(B)->L, (n), "too much top level formats")
+#define pack_checkstack(n) \
+    luaL_checkstack(I(B)->L, (n), "too much top level formats")
 
 static int fmterror(parse_info *info, const char *msgfmt, ...) {
     const char *msg;
@@ -693,12 +685,6 @@ static const char *my_lua_pushlstring(lua_State *L, const char *str, size_t len)
 #  define my_lua_pushlstring lua_pushlstring
 #endif
 
-static char *ensure_size(lb_Buffer *B, size_t sz) {
-    if (sz > B->size)
-        lb_prepbuffsize(B, sz-B->n);
-    return B->b;
-}
-
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     size_t pos;
     int top = lua_gettop(I(B)->L);
@@ -707,12 +693,10 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
 
 #define SINK() do { if (I(level) == 0 && count < 0) pack_checkstack(1); \
         sink(info); } while (0)
-#define BEGIN_PACK(n) \
-    if (pif_test(info, PIF_PACK)) { \
-        if (count < 0 || n <= 0 || ensure_size(I(B), (n))) { \
-            while ((count >= 0 || I(narg) <= top) && count--)
+#define BEGIN_PACK() \
+    if (I(is_pack)) { \
+        while ((count >= 0 || I(narg) <= top) && count--)
 #define BEGIN_UNPACK() \
-        } \
     } else { \
         size_t blen = I(B)->n; \
         if (count > 0) pack_checkstack(count); \
@@ -723,17 +707,15 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     switch (fmt) {
     case 's': case 'S': /* zero-terminated string */
     case 'z': case 'Z': /* zero-terminated string */
-        BEGIN_PACK(0) {
+        BEGIN_PACK() {
             size_t len;
-            const char *str = source_lstring(info, &len);
+            const char *s = source_lstring(info, &len);
             if (wide != 0 && len > wide) len = wide;
-            if (ensure_size(I(B), I(pos) + len + 1)) {
-                memcpy(&I(B)->b[I(pos)], str, len);
-                I(B)->b[I(pos) + len] = '\0';
-                I(pos) += len + 1;
-                if (I(B)->n < I(pos))
-                    I(B)->n = I(pos);
-            }
+            lb_atpos(I(B), I(pos), {
+                lb_addlstring(I(B), s, len);
+                lb_addchar(I(B), '\0');
+            });
+            I(pos) += len + 1;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
@@ -755,18 +737,19 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
     case 'b': case 'B': /* byte */
     case 'c': case 'C': /* char */
         if (wide == 0) wide = 1;
-        BEGIN_PACK(I(pos) + wide * count) {
+        BEGIN_PACK() {
             size_t len;
-            const char *str = source_lstring(info, &len);
+            const char *s = source_lstring(info, &len);
             if (wide != 0 && len > wide) len = wide;
-            if (ensure_size(I(B), I(pos) + wide)) {
-                memcpy(&I(B)->b[I(pos)], str, len);
-                if (len < wide)
-                    memset(&I(B)->b[I(pos) + len], 0, wide - len);
-                I(pos) += wide;
-                if (I(B)->n < I(pos))
-                    I(B)->n = I(pos);
-            }
+            lb_atpos(I(B), I(pos), {
+                lb_addlstring(I(B), s, len);
+                if (wide > len) {
+                    size_t extra = wide-len;
+                    memset(lb_prepbuffsize(I(B), extra), 0, extra);
+                    lb_addsize(I(B), extra);
+                }
+            });
+            I(pos) += len;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
@@ -785,24 +768,22 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         if (wide > 8) fmterror(
                 info,
                 "invalid wide of format '%c': only 1 to 8 supported.", fmt);
-        BEGIN_PACK(0) {
+        BEGIN_PACK() {
             size_t len;
             const char *str = source_lstring(info, &len);
-            size_t n = I(B)->n;
-            I(B)->n = I(pos);
-            lb_packint(I(B), wide, pif_test(info, PIF_BIGENDIAN),
-                    (lua_Integer)len);
-            lb_addlstring(I(B), str, len);
+            lb_atpos(I(B), I(pos), {
+                lb_packint(I(B), wide, I(is_bigendian),
+                        (lua_Integer)len);
+                lb_addlstring(I(B), str, len);
+            });
             I(pos) += wide+len;
-            if (I(B)->n < n)
-                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
             lua_Integer len;
             if (I(pos) + wide > blen) return 0;
             lb_unpackuint(&I(B)->b[I(pos)], wide,
-                    pif_test(info, PIF_BIGENDIAN), &len);
+                    I(is_bigendian), &len);
             if (len > (size_t)(~(size_t)0)/2)
                 fmterror(info, "string too big in format '%c'", fmt);
             if ((fmt == 'd' || fmt == 'D') && I(pos) + wide + len > blen)
@@ -821,14 +802,10 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         if (wide > 8) fmterror(
                 info,
                 "invalid wide of format '%c': only 1 to 8 supported.", fmt);
-        BEGIN_PACK(I(pos) + wide * count) {
-            size_t n = I(B)->n;
-            I(B)->n = I(pos);
-            lb_packint(I(B), wide, pif_test(info, PIF_BIGENDIAN),
-                    source_integer(info));
+        BEGIN_PACK() {
+            lb_atpos(I(B), I(pos), lb_packint(I(B), wide, I(is_bigendian),
+                        source_integer(info)));
             I(pos) += wide;
-            if (I(B)->n < n)
-                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
@@ -836,10 +813,10 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             if (I(pos) + wide > blen) return 0;
             if (fmt == 'u' || fmt == 'U')
                 lb_unpackuint(&I(B)->b[I(pos)], wide, 
-                        pif_test(info, PIF_BIGENDIAN), &i);
+                        I(is_bigendian), &i);
             else
                 lb_unpackint(&I(B)->b[I(pos)], wide, 
-                        pif_test(info, PIF_BIGENDIAN), &i);
+                        I(is_bigendian), &i);
             I(pos) += wide;
             lua_pushinteger(I(B)->L, i); SINK();
         }
@@ -850,21 +827,18 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         if (wide != 4 && wide != 8) fmterror(
                 info,
                 "invalid wide of format '%c': only 4 or 8 supported.", fmt);
-        BEGIN_PACK(I(pos) + wide * count) {
+        BEGIN_PACK() {
             lua_Number num = source_number(info);
-            size_t n = I(B)->n;
-            I(B)->n = I(pos);
-            lb_packfloat(I(B), wide, pif_test(info, PIF_BIGENDIAN), num);
+            lb_atpos(I(B), I(pos),
+                    lb_packfloat(I(B), wide, I(is_bigendian), num));
             I(pos) += wide;
-            if (I(B)->n < n)
-                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
             lua_Number n;
             if (I(pos) + wide > blen) return 0;
             lb_unpackfloat(&I(B)->b[I(pos)], wide,
-                    pif_test(info, PIF_BIGENDIAN), &n);
+                    I(is_bigendian), &n);
             I(pos) += wide;
             lua_pushnumber(I(B)->L, n); SINK();
         }
@@ -908,8 +882,8 @@ static int do_delimiter(parse_info *info, char fmt) {
          * NOTE: if you changed stack structure, you *MUST* change the
          * pop stack behavior in parse_fmt !!  */
         luaL_checkstack(I(B)->L, 4, "table level too big");
-        if (!pif_test(info, PIF_PACK)) {
-            if (!pif_test(info, PIF_STRINGKEY))
+        if (!I(is_pack)) {
+            if (!I(is_stringkey))
                 lua_pushnil(I(B)->L);
             lua_pushinteger(I(B)->L, I(index));
             lua_insert(I(B)->L, -2);
@@ -932,15 +906,15 @@ static int do_delimiter(parse_info *info, char fmt) {
         I(index) = lua_tointeger(I(B)->L, -3);
         I(level) -= 1;
         lua_remove(I(B)->L, -3);
-        if (pif_test(info, PIF_PACK)) {
+        if (I(is_pack)) {
             lua_pop(I(B)->L, 2);
         }
         else {
             if (!lua_isnil(I(B)->L, -2))
-                pif_set(info, PIF_STRINGKEY);
+                I(is_stringkey) = 1;
             else {
                 lua_remove(I(B)->L, -2);
-                pif_clr(info, PIF_STRINGKEY);
+                I(is_stringkey) = 0;
             }
             pack_checkstack(1);
             sink(info);
@@ -956,14 +930,14 @@ static int do_delimiter(parse_info *info, char fmt) {
         break;
 
     case '<': /* little bigendian */
-        pif_clr(info, PIF_BIGENDIAN); break;
+        I(is_bigendian) = 0; break;
     case '>': /* big bigendian */
-        pif_set(info, PIF_BIGENDIAN); break;
+        I(is_bigendian) = 1; break;
     case '=': /* native bigendian */
 #if LB_BIGENDIAN
-        pif_set(info, PIF_BIGENDIAN);
+        I(is_bigendian) = 1; break;
 #else
-        pif_clr(info, PIF_BIGENDIAN);
+        I(is_bigendian) = 0; break;
 #endif
         break;
 
@@ -1020,11 +994,11 @@ static void parse_stringkey(parse_info *info) {
             if (I(level) == 0)
                 fmterror(info, "key at top level near "LUA_QS, curpos);
             lua_pushlstring(I(B)->L, curpos, end - curpos);
-            pif_set(info, PIF_STRINGKEY);
+            I(is_stringkey) = 1;
             return;
         }
     }
-    pif_clr(info, PIF_STRINGKEY);
+    I(is_stringkey) = 0;
 }
 
 static int parse_fmt(parse_info *info) {
@@ -1040,7 +1014,7 @@ static int parse_fmt(parse_info *info) {
             int count = 1;
             parse_fmtargs(info, &wide, &count);
             if (!do_packfmt(info, fmt, wide, count)) {
-                if (pif_test(info, PIF_STRINGKEY))
+                if (I(is_stringkey))
                     lua_pop(I(B)->L, 1);
                 lua_pop(I(B)->L, I(level) * 3); /* 3 values per level */
                 I(level) = 0;
@@ -1071,9 +1045,9 @@ static int do_pack(lb_Buffer *B, int narg, int pack) {
     parse_info info = {NULL};
     info.B = B;
     info.narg = narg;
-    if (pack) pif_set(&info, PIF_PACK);
+    info.is_pack = pack;
 #if LB_BIGENDIAN
-    pif_set(&info, PIF_BIGENDIAN);
+    info.is_bigendian = 1;
 #endif
     if (lua_type(L, info.narg) == LUA_TNUMBER)
         info.pos = posrelat(lua_tointeger(L, info.narg++), info.B->n);
