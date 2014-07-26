@@ -541,9 +541,6 @@ static int Lswap(lua_State *L) {
 #  define CPU_BIG_ENDIAN 0
 #endif
 
-#define swap32(x) \
-    (((x) >> 24) | (((x) >> 8) & 0xFF00) | (((x) & 0xFF00) << 8) | ((x) << 24))
-
 typedef union numcast_t {
     uint32_t i32;
     uint64_t i64;
@@ -578,17 +575,16 @@ typedef struct parse_info {
 
 
 #ifndef LB_ARTHBIT
-static void swap_binary(int bigendian, numcast_t *buf, size_t wide) {
-    if (CPU_BIG_ENDIAN != !!bigendian) {
-        buf->i32s[0] = swap32(buf->i32s[0]);
-        if (wide > 4) {
-            buf->i32s[1] = swap32(buf->i32s[1]);
-            buf->i64 = (buf->i64 >> 32) | (buf->i64 << 32);
-        }
+static void swap_binary(void *buf, size_t wide) {
+    unsigned char *b = buf, *e = b+wide-1;
+    for (; b < e; ++b, --e) {
+        unsigned char t = *b;
+        *b = *e;
+        *e = t;
     }
 }
 #else
-static uint32_t read_int32(const char *str, int bigendian, int wide) {
+static uint32_t read_int32(const char *s, int bigendian, int wide) {
     uint32_t n = 0;
     if (bigendian) {
         switch (wide) {
@@ -611,7 +607,7 @@ static uint32_t read_int32(const char *str, int bigendian, int wide) {
     return n;
 }
 
-static void write_int32(char *str, int bigendian, uint32_t n, int wide) {
+static void write_int32(char *s, int bigendian, uint32_t n, int wide) {
     if (bigendian) {
         switch (wide) {
             default: return;
@@ -635,13 +631,15 @@ static void write_int32(char *str, int bigendian, uint32_t n, int wide) {
 
 static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
-    buf->i64 = 0;
-    memcpy(&buf->c[bigendian ? (8 - wide)&3 : 0], str, wide);
-    swap_binary(bigendian, buf, wide);
+    int pos = bigendian ? (8 - wide)&3 : 0;
+    if (pos != 0) memset(buf->c, 0, pos);
+    memcpy(&buf->c[pos], str, wide);
+    if (CPU_BIG_ENDIAN != !!bigendian)
+        swap_binary(&buf->c[pos], wide);
 #else
     if (wide <= 4) buf->i32 = read_int32(str, bigendian, wide);
     else if (bigendian) {
-        buf->i64 = read_int32(str, bigendian, 4); buf->i64 <<= ((wide-4)<<3)
+        buf->i64 = read_int32(str, bigendian, 4); buf->i64 <<= ((wide-4)<<3);
         buf->i64 |= read_int32(&str[4], bigendian, wide - 4);
     }
     else {
@@ -653,7 +651,8 @@ static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t w
 
 static void write_binary(char *str, int bigendian, numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
-    swap_binary(bigendian, buf, wide);
+    if (CPU_BIG_ENDIAN != !!bigendian)
+        swap_binary(buf->c, wide <= 4 ? 4 : 8);
     memcpy(str, &buf->c[bigendian ? (8 - wide)&3 : 0], wide);
 #else
     if (wide <= 4) write_int32(str, bigendian, buf->i32, wide);
@@ -885,7 +884,7 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         END_PACK();
 
     case 'i': case 'I': /* int */
-    case 'u': case 'U': /* unsigend int */
+    case 'u': case 'U': /* unsigned int */
         if (wide == 0) wide = 4;
         if (wide > 8) fmterror(
                 info,
@@ -1444,8 +1443,9 @@ int luaopen_buffer(lua_State *L) {
         ENTRY(quote),
         ENTRY(topointer),
 
-        /* modify routines */
+        /* modify */
         ENTRY(char),
+        ENTRY(clear),
         ENTRY(copy),
         ENTRY(insert),
         ENTRY(lower),
@@ -1453,7 +1453,6 @@ int luaopen_buffer(lua_State *L) {
         ENTRY(remove),
         ENTRY(rep),
         ENTRY(reverse),
-        ENTRY(clear),
         ENTRY(set),
         ENTRY(setlen),
         ENTRY(swap),
