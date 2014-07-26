@@ -546,10 +546,6 @@ typedef union numcast_t {
     uint64_t i64;
     float f;
     double d;
-#ifndef LB_ARTHBIT
-    uint32_t i32s[2];
-    char c[8];
-#endif /* LB_ARTHBIT */
 } numcast_t;
 
 typedef struct parse_info {
@@ -632,12 +628,13 @@ static void write_int32(char *s, int bigendian, uint32_t n, int wide) {
 static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
     int pos = bigendian ? (8 - wide)&3 : 0;
-    if (pos != 0) memset(buf->c, 0, pos);
-    memcpy(&buf->c[pos], str, wide);
+    if (pos != 0) memset((char*)buf, 0, pos);
+    memcpy((char*)buf + pos, str, wide);
     if (CPU_BIG_ENDIAN != !!bigendian)
-        swap_binary(&buf->c[pos], wide);
+        swap_binary((char*)buf + pos, wide);
 #else
-    if (wide <= 4) buf->i32 = read_int32(str, bigendian, wide);
+    if (wide <= 4)
+        buf->i32 = read_int32(str, bigendian, wide);
     else if (bigendian) {
         buf->i64 = read_int32(str, bigendian, 4); buf->i64 <<= ((wide-4)<<3);
         buf->i64 |= read_int32(&str[4], bigendian, wide - 4);
@@ -652,10 +649,11 @@ static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t w
 static void write_binary(char *str, int bigendian, numcast_t *buf, size_t wide) {
 #ifndef LB_ARTHBIT
     if (CPU_BIG_ENDIAN != !!bigendian)
-        swap_binary(buf->c, wide <= 4 ? 4 : 8);
-    memcpy(str, &buf->c[bigendian ? (8 - wide)&3 : 0], wide);
+        swap_binary((char*)buf, wide <= 4 ? 4 : 8);
+    memcpy(str, (char*)buf + (bigendian ? (8 - wide)&3 : 0), wide);
 #else
-    if (wide <= 4) write_int32(str, bigendian, buf->i32, wide);
+    if (wide <= 4)
+        write_int32(str, bigendian, buf->i32, wide);
     else if (bigendian) {
         write_int32(str, bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
         write_int32(&str[wide - 4], bigendian, (uint32_t)buf->i64, 4);
