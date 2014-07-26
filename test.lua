@@ -32,7 +32,6 @@ function test()
     test_rep()
     test_reverse()
     test_alloc()
-    test_sub()
     test_modify()
     test_byte()
     test_char()
@@ -147,75 +146,28 @@ function test_alloc()
     local b = buffer(10)
     ok(#b == 10, "length of buffer ("..#b..")")
     ok(#b == b:len(), "length of buffer ("..#b..")")
-    b:free()
+    b:setlen(0)
     ok(#b == 0, "free buffer ("..#b..")")
-    b:alloc(20)
+    b:setlen(20)
     ok(#b == 20, "alloc buffer ("..#b..")")
-    b:len(15)
+    b:setlen(15)
     ok(#b == 15, "set length of buffer ("..#b..")")
-    b:len(-14)
+    b:setlen(-14)
     ok(#b == 1, "set negitive length of buffer ("..#b..")")
-    b:len(-10)
+    b:setlen(-10)
     ok(#b == 0, "set negitive length of buffer ("..#b..")")
-end
-
-function test_sub()
-    if buffer.sub then
-        test_msg "test subbuffer"
-        print('sub count = '..buffer._SUBS_MAX)
-        local b = buffer "apple-pie"
-        do  local t = {}
-            for i = 1, buffer._SUBS_MAX + 1 do
-                t[i] = b:sub(i, i-1)
-            end
-            ok(tostring(t[1]):match "^%(invalid subbuffer%): %d+",
-                "invalid subbuffer has special name ("..tostring(t[1])..")")
-            ok(not t[1]:isbuffer(), "invalid subbuffer is not buffer ("..
-                  tostring(t[1]:isbuffer() or nil)..")")
-        end
-        collectgarbage()
-        ok(b:subcount() == 0, "after collectgarbage the subbuffers cleared ("..b:subcount()..")")
-        b:sub(1, 0):assign "(abc)"
-        ok(b :eq "(abc)apple-pie", "subbuffer in front of original buffer ("..b..")")
-        local b = buffer "apple-pie"
-        local sb = b:sub(6, 6)
-        ok(sb :eq '-', "subbuffer in the middle of buffer ("..sb..")")
-        sb:assign "(xxx)"
-        ok(b :eq "apple(xxx)pie", "subbuffer modified original buffer ("..b..")")
-        b:len(3)
-        ok(b :eq "app", "original buffer set length before the begining of subbuffer ("..b..")")
-        ok(not sb:isbuffer(), "and subbuffer is invalid ("..tostring(sb)..")")
-        local b = buffer "apple-pie"
-        local sb = b:sub(6, 6)
-        b:len(5)
-        ok(b :eq "apple", "original buffer set length to the begining of subbuffer ("..b..")")
-        ok(sb:isbuffer(), "and subbuffer is also valid ("..sb..")")
-        sb:append "-pie"
-        ok(b :eq "apple-pie", "and subbuffer can append data to original buffer ("..b..")")
-        sb = b:sub(6)
-        ok(sb :eq "-pie", "subbuffer in the middle of buffer ("..sb..")")
-        b:len(8)
-        ok(sb :eq "-pi", "shorten original buffer, and subbuffer also shortted ("..sb..")")
-        local b = buffer "apple-pie"
-        local sb = b:sub(1,1)
-        local sb2 = b:sub(2,2)
-        local sb3 = b:sub(1,1)
-        local sb4 = b:sub(2,2)
-        local sb5 = b:sub(2,2)
-        ok(b:subcount() == 2, "same subbuffer only has one entity ("..b:subcount()..")")
-    end
 end
 
 function test_modify()
     test_msg "test modified operations"
     local b = buffer "apple"
-    b:append "-pie"
+    b:insert "-pie"
     ok(b :eq "apple-pie", "append operations ("..b..")")
     b:insert(7, "(xxx)-")
     ok(b :eq "apple-(xxx)-pie", "insert operations ("..b..")")
     b:set(7, "[===]")
     ok(b :eq "apple-[===]-pie", "set operations ("..b..")")
-    b:assign "apple-pie"
+    b:set "apple-pie"
     ok(b :eq "apple-pie", "assign operations ("..b..")")
 end
 
@@ -241,7 +193,7 @@ function test_char()
     local b = buffer():char(1,2,3) 
     ok(#b == 3, "chars of three bytes is "..#b)
     local b = buffer "apple-pie":char(0x61,0x62,0x63)
-    ok(b :eq "abc", "chars of three bytes is "..b)
+    ok(b :eq "apple-pieabc", "chars of three bytes is "..b)
 end
 
 function test_clear()
@@ -282,7 +234,7 @@ function test_swap()
     test_msg "test swap operation"
     local b = buffer"apple-pie"
     for i = 1, #b do
-        local s = b:tostring()
+        local s = tostring(b)
         b:swap(i)
         ok(b :eq (s:sub(i)..s:sub(1, i-1)), "swap 1~"..(i-1).." and "..i.."~"..#b.." ("..b..")")
     end
