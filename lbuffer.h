@@ -2,10 +2,17 @@
 #define LBUFFER_H
 
 
+#define LB_LIBNAME "buffer"
+#define LB_VERSION "0.2"
+
+
 #include <lua.h>
 #include <lauxlib.h>
 
-#define LB_API LUALIB_API
+
+#ifndef LB_API
+# define LB_API LUA_API
+#endif
 
 /* compatible apis */
 #if LUA_VERSION_NUM < 502
@@ -13,100 +20,69 @@
 #  define lua_getuservalue              lua_getfenv
 #  define lua_setuservalue              lua_setfenv
 #  define lua_rawlen                    lua_objlen
-#  define luaL_typeerror                luaL_typerror
 #  define luaL_setfuncs(L,l,nups)       luaI_openlib((L),NULL,(l),(nups))
 #  define luaL_newlibtable(L,l)	\
     lua_createtable(L, 0, sizeof(l)/sizeof((l)[0]) - 1)
 #  define luaL_newlib(L,l) \
     (luaL_newlibtable(L,l), luaL_setfuncs(L,l,0))
 
-LUA_API void lua_rawgetp (lua_State *L, int narg, const void *p);
-LUA_API void lua_rawsetp (lua_State *L, int narg, const void *p);
+LUA_API void lua_rawgetp (lua_State *L, int idx, const void *p);
+LUA_API void lua_rawsetp (lua_State *L, int idx, const void *p);
 LUA_API int  lua_absindex (lua_State *L, int idx);
-
-#else
-LUA_API int  luaL_typeerror (lua_State *L, int idx, const char *tname);
 #endif /* LUA_VERSION_NUM < 502 */
 
 
-extern LB_API const char lb_libname[];
+/* luaL_Buffer compatible interface */
 
-#define LB_LIBNAME lb_libname
-#define LB_VERSION "0.1"
-#define LB_STRUCT_HEADER size_t len; size_t capacity; char *str
+typedef struct lb_Buffer {
+    char *b;
+    size_t size;
+    size_t n;
+    lua_State *L;
+    char initb[LUAL_BUFFERSIZE];
+} lb_Buffer;
 
-#if !defined(LB_SUBBUFFER) || defined(LB_SUBS_MAX) || LB_SUBBUFFER
-#  undef  LB_SUBBUFFER
-#  define LB_SUBBUFFER
-#else
-#  undef LB_SUBBUFFER
-#endif
+#define lb_addchar(B,c) \
+  ((void)((B)->n < (B)->size || lb_prepbuffsize((B), 1)), \
+   ((B)->b[(B)->n++] = (c)))
 
-#if !defined(LB_REDIR_STRLIB) || LB_REDIR_STRLIB
-#  undef  LB_REDIR_STRLIB
-#  define LB_REDIR_STRLIB
-#else
-#  undef LB_REDIR_STRLIB
-#endif
-
-#ifdef LB_SUBBUFFER
-#define LB_SBPTR_BOX            "subbuffer-ptrbox"
-#define LB_SUB                 -1
-#define LB_INVALID_SUB         -2
-
-#ifndef LB_SUBS_MAX
-#  define LB_SUBS_MAX           4
-#endif
-
-typedef struct subbuffer {
-    LB_STRUCT_HEADER;
-    int subtype;
-    struct buffer *parent;
-    struct subbuffer *subparent;
-} subbuffer;
-#endif /* LB_SUBBUFFER */
-
-typedef struct buffer {
-    LB_STRUCT_HEADER;
-#ifdef LB_SUBBUFFER
-    int subcount;
-    struct subbuffer *subs[LB_SUBS_MAX];
-#endif /* LB_SUBBUFFER */
-} buffer;
+#define lb_buffinitsize(L,B,sz) (lb_buffinit((L),(B)),lb_prepbuffsize((B),(sz)))
+#define lb_addsize(B,s)	 ((B)->n += (s))
+#define lb_prepbuffer(B)  lb_prepbuffsize((B), LUAL_BUFFERSIZE)
+#define lb_pushresultsize(B,sz) (lb_addsize(B,sz),lb_pushresult(b))
 
 
-#define lb_deletebuffer(L, b)   lb_realloc((L), (b), 0)
-#ifdef LB_SUBBUFFER
-#  define lb_issubbuffer(b)     (((subbuffer*)(b))->subtype == LB_SUB)
-#  define lb_isinvalidsub(b)    (((subbuffer*)(b))->subtype == LB_INVALID_SUB)
-#else
-#  define lb_isinvalidsub(b)    ((void)(b), 0)
-#endif /* LB_SUBBUFFER */
+LB_API void  lb_buffinit     (lua_State *L, lb_Buffer *B);
+LB_API char *lb_prepbuffsize (lb_Buffer *B, size_t sz);
+LB_API void  lb_addlstring   (lb_Buffer *B, const char *s, size_t l);
+LB_API void  lb_addstring    (lb_Buffer *B, const char *s);
+LB_API void  lb_addvalue     (lb_Buffer *B);
+LB_API void  lb_pushresult   (lb_Buffer *B);
 
 
-LB_API buffer  *lb_initbuffer (buffer *b);
-LB_API buffer  *lb_newbuffer  (lua_State *L);
-LB_API buffer  *lb_copybuffer (lua_State *L, buffer *b);
-LB_API char    *lb_realloc    (lua_State *L, buffer *b, size_t len);
+/* buffer type routines */
 
-LB_API buffer      *lb_rawtestbuffer    (lua_State *L, int narg);
-LB_API buffer      *lb_testbuffer       (lua_State *L, int narg);
-LB_API buffer      *lb_checkbuffer      (lua_State *L, int narg);
-LB_API buffer      *lb_pushbuffer       (lua_State *L, const char *str, size_t len);
-LB_API const char  *lb_setbuffer        (lua_State *L, buffer *b, const char *str, size_t len);
+#define LB_METAKEY 0xF7B2FFE7
 
-LUALIB_API int      luaopen_buffer      (lua_State *L);
+LUALIB_API int luaopen_buffer (lua_State *L);
 
-#ifdef LB_SUBBUFFER
-LB_API buffer      *lb_newsubbuffer     (lua_State *L, buffer *b, size_t begin, size_t end);
-LB_API subbuffer   *lb_initsubbuffer    (subbuffer *b);
-LB_API void         lb_removesubbuffer  (subbuffer *b);
-#endif /* LB_SUBBUFFER */
+LB_API lb_Buffer *lb_newbuffer  (lua_State *L);
+LB_API lb_Buffer *lb_copybuffer (lb_Buffer *B);
+LB_API void lb_resetbuffer(lb_Buffer *B);
 
-LB_API int          lb_isbufferorstring (lua_State *L, int narg);
-LB_API const char  *lb_tolstring        (lua_State *L, int narg, size_t *plen);
-LB_API const char  *lb_checklstring     (lua_State *L, int narg, size_t *plen);
-LB_API const char  *lb_optlstring       (lua_State *L, int narg, const char *def, size_t *plen);
+LB_API int lb_pack   (lb_Buffer *B, const char *fmt, int args);
+LB_API int lb_unpack (const char *s, size_t n, const char *fmt);
+LB_API int lb_packint   (lb_Buffer *B, size_t wide, lua_Integer i);
+LB_API int lb_unpackint (const char *s, size_t n, size_t wide, lua_Integer *pi);
+
+LB_API lb_Buffer *lb_testbuffer  (lua_State *L, int idx);
+LB_API lb_Buffer *lb_checkbuffer (lua_State *L, int idx);
+LB_API lb_Buffer *lb_pushbuffer  (lua_State *L, const char *str, size_t len);
+
+LB_API int          lb_isbufferorstring (lua_State *L, int idx);
+LB_API const char  *lb_tolstring        (lua_State *L, int idx, size_t *plen);
+LB_API const char  *lb_checklstring     (lua_State *L, int idx, size_t *plen);
+LB_API const char  *lb_optlstring       (lua_State *L, int idx, const char *def, size_t *plen);
 
 #ifdef LB_REPLACE_LUA_API
 #  define lua_isstring      lb_isbufferorstring
@@ -114,5 +90,6 @@ LB_API const char  *lb_optlstring       (lua_State *L, int narg, const char *def
 #  define luaL_checklstring lb_checklstring
 #  define luaL_optlstring   lb_optlstring
 #endif /* LB_REPLACE_LUA_API */
+
 
 #endif /* LBUFFER_H */
