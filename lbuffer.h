@@ -10,6 +10,12 @@
 #include <lauxlib.h>
 
 
+#if defined( __sparc__ ) || defined( __ppc__ )
+#  define LB_BIGENDIAN 1
+#else
+#  define LB_BIGENDIAN 0
+#endif
+
 #ifndef LB_API
 # define LB_API LUA_API
 #endif
@@ -70,11 +76,6 @@ LB_API lb_Buffer *lb_newbuffer  (lua_State *L);
 LB_API lb_Buffer *lb_copybuffer (lb_Buffer *B);
 LB_API void lb_resetbuffer(lb_Buffer *B);
 
-LB_API int lb_pack   (lb_Buffer *B, const char *fmt, int args);
-LB_API int lb_unpack (const char *s, size_t n, const char *fmt);
-LB_API int lb_packint   (lb_Buffer *B, size_t wide, lua_Integer i);
-LB_API int lb_unpackint (const char *s, size_t n, size_t wide, lua_Integer *pi);
-
 LB_API lb_Buffer *lb_testbuffer  (lua_State *L, int idx);
 LB_API lb_Buffer *lb_checkbuffer (lua_State *L, int idx);
 LB_API lb_Buffer *lb_pushbuffer  (lua_State *L, const char *str, size_t len);
@@ -83,6 +84,22 @@ LB_API int          lb_isbufferorstring (lua_State *L, int idx);
 LB_API const char  *lb_tolstring        (lua_State *L, int idx, size_t *plen);
 LB_API const char  *lb_checklstring     (lua_State *L, int idx, size_t *plen);
 LB_API const char  *lb_optlstring       (lua_State *L, int idx, const char *def, size_t *plen);
+
+
+/* pack/unpack operations */
+
+LB_API int lb_packint    (lb_Buffer *B, size_t wide, int bigendian, lua_Integer i);
+LB_API int lb_unpackint  (const char *s, size_t wide, int bigendian, lua_Integer *pi);
+LB_API int lb_unpackuint (const char *s, size_t wide, int bigendian, lua_Integer *pi);
+
+LB_API int lb_packfloat   (lb_Buffer *B, size_t wide, int bigendian, lua_Number n);
+LB_API int lb_unpackfloat (const char *s, size_t wide, int bigendian, lua_Number *pn);
+
+LB_API int lb_pack   (lb_Buffer *B, size_t pos, const char *fmt, int args);
+LB_API int lb_unpack (const char *s, size_t n, const char *fmt);
+
+
+/* lua compatible APIs */
 
 #ifdef LB_REPLACE_LUA_API
 #  define lua_isstring      lb_isbufferorstring

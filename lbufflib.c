@@ -524,29 +524,61 @@ static int Lswap(lua_State *L) {
 }
 
 
-/* pack/unpack bianry buffer */
+/* bianry operations */
 
-#ifndef _MSC_VER
-#  include <stdint.h>
-#else
-#  define uint32_t unsigned long
-#  define uint64_t unsigned __int64
-#  define int32_t signed long
-#  define int64_t signed __int64
-#endif
+static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int *bigendian) {
+    size_t pos = posrelat(luaL_optint(L, narg, 1), len);
+    *wide = luaL_optint(L, narg + 1, 4);
+    if (*wide < 1 || *wide > 8)
+        luaL_argerror(L, narg + 1, "only 1 to 8 wide support");
+    switch (*luaL_optlstring(L, narg + 2, "native", NULL)) {
+    case 'b': case 'B': case '>': *bigendian = 1; break;
+    case 'l': case 'L': case '<': *bigendian = 0; break;
+    case 'n': case 'N': case '=': *bigendian = LB_BIGENDIAN; break;
+    default: luaL_argerror(L, 4, "only \"big\" or \"little\" or \"native\" endian support");
+    }
+    return pos;
+}
 
-#if defined( __sparc__ ) || defined( __ppc__ )
-#  define CPU_BIG_ENDIAN 1
-#else
-#  define CPU_BIG_ENDIAN 0
-#endif
+static int Lgetint(lua_State *L) {
+    lua_Integer i;
+    size_t len;
+    const char *str = lb_checklstring(L, 1, &len);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
+    if (pos + wide > len) return 0;
+    lb_unpackint(&str[pos], wide, bigendian, &i);
+    lua_pushinteger(L, i);
+    return 1;
+}
 
-typedef union numcast_t {
-    uint32_t i32;
-    float f;
-    uint64_t i64;
-    double d;
-} numcast_t;
+static int Lgetuint(lua_State *L) {
+    lua_Integer i;
+    size_t len;
+    const char *str = lb_checklstring(L, 1, &len);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
+    if (pos + wide > len) return 0;
+    lb_unpackuint(&str[pos], wide, bigendian, &i);
+    lua_pushinteger(L, i);
+    return 1;
+}
+
+static int Lsetuint(lua_State *L) {
+    lb_Buffer *B = lb_checkbuffer(L, 1);
+    lua_Integer i = luaL_checkinteger(L, 2);
+    int bigendian;
+    size_t wide, pos = check_giargs(L, 3, B->n, &wide, &bigendian);
+    size_t n = B->n;
+    B->n = pos;
+    lb_packint(B, wide, bigendian, i);
+    if (B->n < n) B->n = n;
+    lua_settop(L, 1);
+    return 1;
+}
+
+
+/* pack/unpack */
 
 typedef struct parse_info {
     lb_Buffer *B;       /* working lb_Buffer */
@@ -568,89 +600,6 @@ typedef struct parse_info {
 #define PIF_PACK         0x01
 #define PIF_BIGENDIAN    0x02
 #define PIF_STRINGKEY    0x04
-
-
-static uint32_t read_int32(const char *s, int bigendian, int wide) {
-    uint32_t n = 0;
-    if (bigendian) {
-        switch (wide) {
-        default: return 0;
-        case 4:          n |= *s++ & 0xFF;
-        case 3: n <<= 8; n |= *s++ & 0xFF;
-        case 2: n <<= 8; n |= *s++ & 0xFF;
-        case 1: n <<= 8; n |= *s++ & 0xFF;
-        }
-    }
-    else {
-        switch (wide) {
-        default: return 0;
-        case 4: n |= (*s++ & 0xFF) << 24;
-        case 3: n |= (*s++ & 0xFF) << 16;
-        case 2: n |= (*s++ & 0xFF) <<  8;
-        case 1: n |= (*s++ & 0xFF);
-        }
-    }
-    return n;
-}
-
-static void write_int32(char *s, int bigendian, uint32_t n, int wide) {
-    if (bigendian) {
-        switch (wide) {
-            default: return;
-            case 4: *s++ = (n >> 24) & 0xFF;
-            case 3: *s++ = (n >> 16) & 0xFF;
-            case 2: *s++ = (n >>  8) & 0xFF;
-            case 1: *s++ = (n      ) & 0xFF;
-        }
-    }
-    else {
-        switch (wide) {
-            default: return;
-            case 4: *s++ = n & 0xFF; n >>= 8;
-            case 3: *s++ = n & 0xFF; n >>= 8;
-            case 2: *s++ = n & 0xFF; n >>= 8;
-            case 1: *s++ = n & 0xFF;
-        }
-    }
-}
-
-static void read_binary(const char *str, int bigendian, numcast_t *buf, size_t wide) {
-    if (wide <= 4)
-        buf->i32 = read_int32(str, bigendian, wide);
-    else if (bigendian) {
-        buf->i64 = read_int32(str, bigendian, 4); buf->i64 <<= ((wide-4)<<3);
-        buf->i64 |= read_int32(&str[4], bigendian, wide - 4);
-    }
-    else {
-        buf->i64 = read_int32(str, bigendian, 4);
-        buf->i64 |= (uint64_t)read_int32(str, bigendian, 4) << 32;
-    }
-}
-
-static void write_binary(char *str, int bigendian, numcast_t *buf, size_t wide) {
-    if (wide <= 4)
-        write_int32(str, bigendian, buf->i32, wide);
-    else if (bigendian) {
-        write_int32(str, bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
-        write_int32(&str[wide - 4], bigendian, (uint32_t)buf->i64, 4);
-    }
-    else {
-        write_int32(str, bigendian, (uint32_t)buf->i64, 4);
-        write_int32(&str[4], bigendian, (uint32_t)(buf->i64 >> 32), wide - 4);
-    }
-}
-
-static void expand_sign(numcast_t *buf, size_t wide) {
-    int shift = wide<<3;
-    if (wide <= 4) {
-        if (wide != 4 && ((uint32_t)1 << (shift - 1) & buf->i32) != 0)
-            buf->i32 |= ~(uint32_t)0 << shift;
-    }
-    else {
-        if (wide != 8 && ((uint64_t)1 << (shift - 1) & buf->i64) != 0)
-            buf->i64 |= ~(uint64_t)0 << shift;
-    }
-}
 
 static int source(parse_info *info) {
     if (I(level) == 0)
@@ -676,6 +625,21 @@ static const char *source_lstring(parse_info *info, size_t *plen) {
         luaL_argerror(I(B)->L, I(narg) - 1, lua_tostring(I(B)->L, -1));
     }
     return NULL;
+}
+
+static lua_Integer source_integer(parse_info *info) {
+    int narg = source(info);
+    if (lua_isnumber(I(B)->L, narg))
+        return lua_tointeger(I(B)->L, narg);
+    else if (I(level) == 0)
+        type_error(I(B)->L, I(narg) - 1, "integer");
+    else {
+        lua_pushfstring(I(B)->L,
+                "integer expected in [%d], got %s",
+                I(index) - 1, luaL_typename(I(B)->L, narg));
+        luaL_argerror(I(B)->L, I(narg) - 1, lua_tostring(I(B)->L, -1));
+    }
+    return 0;
 }
 
 static lua_Number source_number(parse_info *info) {
@@ -736,7 +700,6 @@ static char *ensure_size(lb_Buffer *B, size_t sz) {
 }
 
 static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
-    numcast_t buf;
     size_t pos;
     int top = lua_gettop(I(B)->L);
     typedef const char *(*pushlstring_t)(lua_State * L, const char * str, size_t len);
@@ -825,26 +788,22 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
         BEGIN_PACK(0) {
             size_t len;
             const char *str = source_lstring(info, &len);
-            if (ensure_size(I(B), I(pos) + wide + len)) {
-                if (wide <= 4) buf.i32 = len;
-                else buf.i64 = len;
-                write_binary(&I(B)->b[I(pos)],
-                             pif_test(info, PIF_BIGENDIAN), &buf, wide);
-                memcpy(&I(B)->b[I(pos) + wide], str, len);
-                I(pos) += wide + len;
-                if (I(B)->n < I(pos))
-                    I(B)->n = I(pos);
-            }
+            size_t n = I(B)->n;
+            I(B)->n = I(pos);
+            lb_packint(I(B), wide, pif_test(info, PIF_BIGENDIAN),
+                    (lua_Integer)len);
+            lb_addlstring(I(B), str, len);
+            I(pos) += wide+len;
+            if (I(B)->n < n)
+                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
-            size_t len;
+            lua_Integer len;
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(B)->b[I(pos)],
-                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
-            if (wide <= 4)
-                len = buf.i32;
-            else if ((len = (size_t)buf.i64) != buf.i64)
+            lb_unpackuint(&I(B)->b[I(pos)], wide,
+                    pif_test(info, PIF_BIGENDIAN), &len);
+            if (len > (size_t)(~(size_t)0)/2)
                 fmterror(info, "string too big in format '%c'", fmt);
             if ((fmt == 'd' || fmt == 'D') && I(pos) + wide + len > blen)
                 return 0;
@@ -863,34 +822,26 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
                 info,
                 "invalid wide of format '%c': only 1 to 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
-            if (wide <= 4)
-                buf.i32 = (int32_t)source_number(info);
-            else
-                buf.i64 = (int64_t)source_number(info);
-            if (count >= 0
-                    || ensure_size(I(B), I(pos) + wide)) {
-                write_binary(&I(B)->b[I(pos)],
-                             pif_test(info, PIF_BIGENDIAN), &buf, wide);
-                I(pos) += wide;
-                if (I(B)->n < I(pos))
-                    I(B)->n = I(pos);
-            }
+            size_t n = I(B)->n;
+            I(B)->n = I(pos);
+            lb_packint(I(B), wide, pif_test(info, PIF_BIGENDIAN),
+                    source_integer(info));
+            I(pos) += wide;
+            if (I(B)->n < n)
+                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
+            lua_Integer i;
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(B)->b[I(pos)],
-                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
-            I(pos) += wide;
             if (fmt == 'u' || fmt == 'U')
-                lua_pushinteger(I(B)->L, wide <= 4 ? buf.i32 :
-                               (lua_Integer)buf.i64);
-            else {
-                expand_sign(&buf, wide);
-                lua_pushinteger(I(B)->L, wide <= 4 ? (int32_t)buf.i32 :
-                               (lua_Integer)(int64_t)buf.i64);
-            }
-            SINK();
+                lb_unpackuint(&I(B)->b[I(pos)], wide, 
+                        pif_test(info, PIF_BIGENDIAN), &i);
+            else
+                lb_unpackint(&I(B)->b[I(pos)], wide, 
+                        pif_test(info, PIF_BIGENDIAN), &i);
+            I(pos) += wide;
+            lua_pushinteger(I(B)->L, i); SINK();
         }
         END_PACK();
 
@@ -900,23 +851,22 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
                 info,
                 "invalid wide of format '%c': only 4 or 8 supported.", fmt);
         BEGIN_PACK(I(pos) + wide * count) {
-            buf.d = source_number(info);
-            if (wide == 4) buf.f = (float)buf.d;
-            if (count >= 0 || ensure_size(I(B), I(pos) + wide)) {
-                write_binary(&I(B)->b[I(pos)],
-                             pif_test(info, PIF_BIGENDIAN), &buf, wide);
-                I(pos) += wide;
-                if (I(B)->n < I(pos))
-                    I(B)->n = I(pos);
-            }
+            lua_Number num = source_number(info);
+            size_t n = I(B)->n;
+            I(B)->n = I(pos);
+            lb_packfloat(I(B), wide, pif_test(info, PIF_BIGENDIAN), num);
+            I(pos) += wide;
+            if (I(B)->n < n)
+                I(B)->n = n;
             lua_pop(I(B)->L, 1); /* pop source */
         }
         BEGIN_UNPACK() {
+            lua_Number n;
             if (I(pos) + wide > blen) return 0;
-            read_binary(&I(B)->b[I(pos)],
-                        pif_test(info, PIF_BIGENDIAN), &buf, wide);
+            lb_unpackfloat(&I(B)->b[I(pos)], wide,
+                    pif_test(info, PIF_BIGENDIAN), &n);
             I(pos) += wide;
-            lua_pushnumber(I(B)->L, wide == 4 ? buf.f : buf.d); SINK();
+            lua_pushnumber(I(B)->L, n); SINK();
         }
         END_PACK();
 
@@ -1010,7 +960,7 @@ static int do_delimiter(parse_info *info, char fmt) {
     case '>': /* big bigendian */
         pif_set(info, PIF_BIGENDIAN); break;
     case '=': /* native bigendian */
-#if CPU_BIG_ENDIAN
+#if LB_BIGENDIAN
         pif_set(info, PIF_BIGENDIAN);
 #else
         pif_clr(info, PIF_BIGENDIAN);
@@ -1122,7 +1072,7 @@ static int do_pack(lb_Buffer *B, int narg, int pack) {
     info.B = B;
     info.narg = narg;
     if (pack) pif_set(&info, PIF_PACK);
-#if CPU_BIG_ENDIAN
+#if LB_BIGENDIAN
     pif_set(&info, PIF_BIGENDIAN);
 #endif
     if (lua_type(L, info.narg) == LUA_TNUMBER)
@@ -1166,66 +1116,7 @@ static int Lunpack(lua_State *L) {
     return do_pack(lb_checkbuffer(L, 1), 2, 0);
 }
 
-static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int *bigendian) {
-    size_t pos = posrelat(luaL_optint(L, narg, 1), len);
-    *wide = luaL_optint(L, narg + 1, 4);
-    if (*wide < 1 || *wide > 8)
-        luaL_argerror(L, narg + 1, "only 1 to 8 wide support");
-    switch (*luaL_optlstring(L, narg + 2, "native", NULL)) {
-    case 'b': case 'B': case '>': *bigendian = 1; break;
-    case 'l': case 'L': case '<': *bigendian = 0; break;
-    case 'n': case 'N': case '=': *bigendian = CPU_BIG_ENDIAN; break;
-    default: luaL_argerror(L, 4, "only \"big\" or \"little\" or \"native\" endian support");
-    }
-    return pos;
-}
-
-static int Lgetint(lua_State *L) {
-    numcast_t buf;
-    size_t len;
-    const char *str = lb_checklstring(L, 1, &len);
-    int bigendian;
-    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
-    if (pos + wide > len) return 0;
-    read_binary(&str[pos], bigendian, &buf, wide);
-    expand_sign(&buf, wide);
-    lua_pushnumber(L, wide <= 4 ? (int32_t)buf.i32 :
-                   (lua_Number)(int64_t)buf.i64);
-    return 1;
-}
-
-static int Lgetuint(lua_State *L) {
-    numcast_t buf;
-    size_t len;
-    const char *str = lb_checklstring(L, 1, &len);
-    int bigendian;
-    size_t wide, pos = check_giargs(L, 2, len, &wide, &bigendian);
-    if (pos + wide > len) return 0;
-    read_binary(&str[pos], bigendian, &buf, wide);
-    lua_pushnumber(L, wide <= 4 ? buf.i32 : (lua_Number)buf.i64);
-    return 1;
-}
-
-static int Lsetuint(lua_State *L) {
-    numcast_t buf;
-    lb_Buffer *B = lb_checkbuffer(L, 1);
-    int bigendian;
-    size_t wide, pos = check_giargs(L, 3, B->n, &wide, &bigendian);
-    if (ensure_size(B, pos + wide)) {
-        /* we use int64_t with i64, because if we use uint64_t, the
-         * high 32 bit of 64bit integer will be stripped, don't know
-         * why it happened.  */
-        if (wide <= 4) buf.i32 = (/*u*/int32_t)luaL_checknumber(L, 2);
-        else buf.i64 = (/*u*/int64_t)luaL_checknumber(L, 2);
-        write_binary(&B->b[pos], bigendian, &buf, wide);
-    }
-    lua_settop(L, 1);
-    return 1;
-}
-
 #undef I
-
-
 
 
 /* meta methods */
