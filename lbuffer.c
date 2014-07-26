@@ -82,6 +82,12 @@ LB_API void lb_addstring(lb_Buffer *B, const char *s) {
     lb_addlstring(B, s, strlen(s));
 }
 
+LB_API void lb_addpadding(lb_Buffer *B, int ch, size_t l) {
+    char *b = lb_prepbuffsize(B, l);
+    memset(b, ch, l * sizeof(char));
+    lb_addsize(B, l);
+}
+
 LB_API void lb_addvalue(lb_Buffer *B) {
     lua_State *L = B->L;
     size_t l;

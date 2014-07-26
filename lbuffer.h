@@ -67,6 +67,7 @@ LB_API void  lb_buffinit     (lua_State *L, lb_Buffer *B);
 LB_API char *lb_prepbuffsize (lb_Buffer *B, size_t sz);
 LB_API void  lb_addlstring   (lb_Buffer *B, const char *s, size_t l);
 LB_API void  lb_addstring    (lb_Buffer *B, const char *s);
+LB_API void  lb_addpadding   (lb_Buffer *B, int ch, size_t l);
 LB_API void  lb_addvalue     (lb_Buffer *B);
 LB_API void  lb_pushresult   (lb_Buffer *B);
 

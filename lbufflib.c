@@ -170,11 +170,8 @@ static int Lsetlen(lua_State *L) {
     if (newlen < 0) newlen = 0;
     if ((size_t)newlen <= B->n)
         B->n = (size_t)newlen;
-    else {
-        size_t growsize = (size_t)newlen - B->n;
-        memset(lb_prepbuffsize(B, growsize), 0, growsize);
-        lb_addsize(B, growsize);
-    }
+    else
+        lb_addpadding(B, 0, (size_t)newlen - B->n);
     return_self(L);
 }
 
@@ -743,11 +740,8 @@ static int do_packfmt(parse_info *info, char fmt, size_t wide, int count) {
             if (wide != 0 && len > wide) len = wide;
             lb_atpos(I(B), I(pos), {
                 lb_addlstring(I(B), s, len);
-                if (wide > len) {
-                    size_t extra = wide-len;
-                    memset(lb_prepbuffsize(I(B), extra), 0, extra);
-                    lb_addsize(I(B), extra);
-                }
+                if (wide > len)
+                    lb_addpadding(I(B), 0, wide - len);
             });
             I(pos) += len;
             lua_pop(I(B)->L, 1); /* pop source */
