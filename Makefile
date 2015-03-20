@@ -11,7 +11,7 @@ MACOSX_VERSION = 10.4
 PLAT = none
 DEFS =
 CMOD = buffer.so
-OBJS = lbuffer.o lb_interface.o
+OBJS = lbuffer.o lbufflib.o
 
 LIBS = -llua
 WARN = -Wall -pedantic
@@ -46,7 +46,7 @@ none:
 	@echo "  * macosx"
 	@echo "  * mingw"
 
-install: $(CMOD)
+install : $(CMOD)
 	cp $(CMOD) $(LUACPATH)
 
 uninstall:
@@ -62,7 +62,7 @@ macosx:
 	@$(MAKE) $(CMOD) PLAT=macosx MYCFLAGS="$(MAC_CFLAGS)" MYLDFLAGS="$(MAC_LDFLAGS)" MYENV="$(MAC_ENV)"
 
 mingw:
-	@$(MAKE) $(MGW_CMOD) PLAT=mingw MYCFLAGS="$(MGW_CFLAGS)" MYLDFLAGS="$(MGW_LDFLAGS)" INCDIR="$(MGW_INCDIR)" LIBS="$(MGW_LIBS)" CMOD="$(MGW_CMOD)"
+	$(MAKE) $(MGW_CMOD) PLAT=mingw CMOD="$(MGW_CMOD)" MYCFLAGS="$(MGW_CFLAGS)" MYLDFLAGS="$(MGW_LDFLAGS)" INCDIR="$(MGW_INCDIR)" LIBS="$(MGW_LIBS)"
 
 test:
 	lua ./test.lua
@@ -73,5 +73,5 @@ clean:
 .c.o:
 	$(CC) $(CFLAGS) $< -c -o $@
 
-$(CMOD): $(OBJS)
+$(CMOD) : $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) $(LIBS) -o $@
