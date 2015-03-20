@@ -35,6 +35,8 @@
 LUA_API void lua_rawgetp (lua_State *L, int idx, const void *p);
 LUA_API void lua_rawsetp (lua_State *L, int idx, const void *p);
 LUA_API int  lua_absindex (lua_State *L, int idx);
+
+LUAMOD_API const char *luaL_tolstring (lua_State *L, int idx, size_t *plen);
 #endif /* LUA_VERSION_NUM < 502 */
 
 

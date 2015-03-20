@@ -372,7 +372,7 @@ LB_API int lb_unpackfloat(const char *s, size_t wide, int bigendian, lua_Number 
 }
 
 /*
- * cc: lua='lua52' flags+='-s -O2 -Wall -pedantic -mdll -Id:/$lua/include' libs+='d:/$lua/$lua.dll'
+ * cc: lua='lua53' flags+='-s -O2 -Wall -std=c99 -pedantic -mdll -Id:/$lua/include' libs+='d:/$lua/$lua.dll'
  * cc: flags+='-DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE'
  * cc: flags+='-DLUA_BUILD_AS_DLL' input='lb*.c' output='buffer.dll'
  * cc: run='$lua test.lua'

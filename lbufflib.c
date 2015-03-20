@@ -19,7 +19,7 @@
 #define uchar(ch) ((unsigned char)(ch))
 
 
-static size_t posrelat(int offset, size_t len) {
+static size_t posrelat(lua_Integer offset, size_t len) {
     if (offset >= 1 && (size_t)offset <= len)
         return offset - 1;
     else if (offset <= -1 && (size_t)-offset <= len)
@@ -28,8 +28,8 @@ static size_t posrelat(int offset, size_t len) {
 }
 
 static size_t rangerelat(lua_State *L, int idx, size_t *plen) {
-    size_t i = posrelat(luaL_optint(L, idx, 1), *plen);
-    int sj = luaL_optint(L, idx + 1, -1);
+    size_t i = posrelat(luaL_optinteger(L, idx, 1), *plen);
+    lua_Integer sj = luaL_optinteger(L, idx + 1, -1);
     size_t j = posrelat(sj, *plen);
     *plen = i <= j ? j - i + (sj != 0 && j != *plen) : 0;
     return i;
@@ -119,7 +119,7 @@ static int Lquote(lua_State *L) {
 
 static int Ltopointer(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    size_t offset = posrelat(luaL_optint(L, 2, 1), B->n);
+    size_t offset = posrelat(luaL_optinteger(L, 2, 1), B->n);
     lua_pushlightuserdata(L, offset == B->n ? NULL : &B->b[offset]);
     return 1;
 }
@@ -147,7 +147,7 @@ static int Leq(lua_State *L) {
 
 static int auxipairs(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    int key = luaL_checkint(L, 2) + 1;
+    int key = (int)luaL_checkinteger(L, 2) + 1;
     if (key <= 0 || (size_t)key > B->n) return 0;
     lua_pushinteger(L, key);
     lua_pushinteger(L, uchar(B->b[key - 1]));
@@ -156,7 +156,7 @@ static int auxipairs(lua_State *L) {
 
 static int Lipairs(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    int pos = posrelat(luaL_optint(L, 2, 1), B->n);
+    int pos = posrelat(luaL_optinteger(L, 2, 1), B->n);
     lua_pushcfunction(L, auxipairs);
     lua_insert(L, 1);
     lua_pushinteger(L, pos);
@@ -204,7 +204,7 @@ static int Lchar(lua_State *L) {
     }
     p = lb_prepbuffsize(B, n);
     for (i = 2; i <= n; ++i) {
-        int c = luaL_checkint(L, i);
+        int c = (int)luaL_checkinteger(L, i);
         if (uchar(c) != c && invalid > 0)
             invalid += i;
         p[i - 2] = uchar(c);
@@ -350,8 +350,8 @@ static int Lnew(lua_State *L) {
 
 static int map_char(lua_State *L, int (*f)(int)) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    size_t first = posrelat(luaL_optint(L, 2, 1), B->n);
-    size_t last = posrelat(luaL_optint(L, 3, -1), B->n);
+    size_t first = posrelat(luaL_optinteger(L, 2, 1), B->n);
+    size_t last = posrelat(luaL_optinteger(L, 3, -1), B->n);
     for (; first <= last; ++first)
         B->b[first] = uchar(f(B->b[first]));
     return_self(L);
@@ -413,11 +413,11 @@ static int Lrep(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
     size_t len = B->n;
     const char *str = B->b;
-    int rep = 0;
+    lua_Integer rep = 0;
     if (lua_type(L, 2) == LUA_TNUMBER)
         rep = lua_tointeger(L, 2);
     else if ((str = lb_tolstring(L, 2, &len)) != NULL)
-        rep = luaL_checkint(L, 3);
+        rep = luaL_checkinteger(L, 3);
     else type_error(L, 2, "number/buffer/string");
     if (rep < 0) rep = 0;
     apply_strarg(B, 0, str, len*rep, len);
@@ -434,7 +434,7 @@ static int Lcopy(lua_State *L) {
 
 static int Lmove(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    int dst = luaL_checkint(L, 2);
+    lua_Integer dst = luaL_checkinteger(L, 2);
     size_t len = B->n, pos = rangerelat(L, 3, &len);
 
     if (dst > 0) dst -= 1;
@@ -493,7 +493,7 @@ static int Lswap(lua_State *L) {
     size_t p1, l1, p2, l2;
     lb_Buffer *B = lb_checkbuffer(L, 1);
     if (lua_isnoneornil(L, 3)) {
-        p2 = posrelat(luaL_checkint(L, 2), B->n);
+        p2 = posrelat(luaL_checkinteger(L, 2), B->n);
         l2 = B->n - p2;
         p1 = 0, l1 = p2;
     }
@@ -524,8 +524,8 @@ static int Lswap(lua_State *L) {
 /* bianry operations */
 
 static size_t check_giargs(lua_State *L, int narg, size_t len, size_t *wide, int *bigendian) {
-    size_t pos = posrelat(luaL_optint(L, narg, 1), len);
-    *wide = luaL_optint(L, narg + 1, 4);
+    size_t pos = posrelat(luaL_optinteger(L, narg, 1), len);
+    *wide = (size_t)luaL_optinteger(L, narg + 1, 4);
     if (*wide < 1 || *wide > 8)
         luaL_argerror(L, narg + 1, "only 1 to 8 wide support");
     switch (*luaL_optlstring(L, narg + 2, "native", NULL)) {
@@ -1134,7 +1134,7 @@ static int L__index(lua_State *L) {
 
 static int L__newindex(lua_State *L) {
     lb_Buffer *B = lb_checkbuffer(L, 1);
-    int ch, pos = luaL_checkint(L, 2);
+    int ch, pos = (int)luaL_checkinteger(L, 2);
     size_t len;
     const char *s;
 
@@ -1321,6 +1321,6 @@ int luaopen_buffer(lua_State *L) {
 }
 
 /*
- * cc: flags+='-shared -s -O2 -Wall -pedantic' libs+='-llua52'
+ * cc: flags+='-shared -s -O2 -Wall -pedantic' libs+='-llua53'
  * cc: flags+='-DLB_REDIR_STRLIB=1 -DLB_FILEHANDLE -DLUA_BUILD_AS_DLL'
  * cc: input='lb*.c' output='buffer.dll' run='lua test.lua' */
