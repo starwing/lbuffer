@@ -1,4 +1,4 @@
-lbuffer - a mutable string support to lua
+lbuffer - mutable string support to lua
 =========================================
 
 lbuffer is a C module for lua, it provides mutable string feature to
